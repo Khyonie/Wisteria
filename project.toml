@@ -1,0 +1,12 @@
+[project]
+name = "Wisteria"
+libraries = []
+
+[task]
+output = ["target/build/{TASK}/{NAME}.jar"]
+input = []
+
+[task.main]
+source = "jsrc"
+#output = ["target/build/{TASK}/{NAME}.jar"]
+#input = []
