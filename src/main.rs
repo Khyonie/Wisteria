@@ -75,13 +75,13 @@ Options:
 "#;
 
 const HEADER: &str =
-r#"Wisteria v2.1.1 ~ Java Project Manager
+r#"Wisteria v2.1.5 ~ Java Project Manager
 Copyright (C) 2024  Hailey-Jane "Khyonie" Garrett <http://www.khyonieheart.coffee>
 
 This program comes with ABSOLUTELY NO WARRANTY; for details type `wisteria warranty'.
 This is free software, and you are welcome to redistribute it
 under certain conditions; type `wisteria copying' for details.
-"#;
+-"#;
 
 enum Operation
 {
@@ -204,7 +204,7 @@ fn main()
         //-------------------------------------------------------------------------------- 
         "build" => {
             let task: String = arguments.get(2)
-                .unwrap_or(&String::from("main"))
+                .unwrap_or(&String::from("(DEFAULT)"))
                 .to_string();
 
             Operation::BuildProject { task }
@@ -214,7 +214,7 @@ fn main()
         //-------------------------------------------------------------------------------- 
         "execute" | "run" => {
             let task: String = arguments.get(2)
-                .unwrap_or(&String::from("main"))
+                .unwrap_or(&String::from("(DEFAULT)"))
                 .to_string();
 
             Operation::RunProject { task }
@@ -273,6 +273,12 @@ fn main()
                 }
             };
 
+            let task: String = match task.as_str()
+            {
+                "(DEFAULT)" => project.default_task_name().to_string(),
+                _ => task
+            };
+
             let last_built_task = task.clone();
 
             let task = validate_task(&project, &task, &java_version, &flags);
@@ -295,7 +301,12 @@ fn main()
             {
                 compilation_times.remove(0);
             }
-            compilation_times.push(elapsed_time as u32);
+            if elapsed_time > 10
+            {
+                compilation_times.push(elapsed_time as u32);
+            } else {
+                silentln!(flags, "Skipping registering this compilation time, as no files were compiled");
+            }
             let mut average: u32 = 0;
             for time in &compilation_times
             {
@@ -340,12 +351,18 @@ fn main()
                 }
             };
 
+            let task: String = match task.as_str()
+            {
+                "(DEFAULT)" => project.default_task_name().to_string(),
+                _ => task
+            };
+
             let last_built_task = task.clone();
 
             let task = validate_task(&project, &task, &java_version, &flags);
             if task.get_entry().is_none()
             {
-                silentln!(flags, "No entry point has been defined for task {} in projcet {}. Configure one in your project.toml with your favorite text editor and try again. Aborting...", task.get_name(), project.get_name());
+                silentln!(flags, "No entry point has been defined for task {} in project {}. Configure one in your project.toml with your favorite text editor and try again. Aborting...", task.get_name(), project.get_name());
                 exit(3);
             }
             let build_information = BuildInformation::from(&task, &project, &metadata, &flags);
@@ -366,7 +383,12 @@ fn main()
             {
                 compilation_times.remove(0);
             }
-            compilation_times.push(elapsed_time as u32);
+            if elapsed_time > 10 
+            {
+                compilation_times.push(elapsed_time as u32);
+            } else {
+                silentln!(flags, "Skipping registering this compilation time, as no files were compiled");
+            }
             let mut average: u32 = 0;
             for time in &compilation_times
             {

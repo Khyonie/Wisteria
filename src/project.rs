@@ -8,7 +8,8 @@ pub struct Project
 {
     name: String,
     tasks: HashMap<String, Task>,
-    default_task: Option<Task>
+    default_task: Option<Task>,
+    default: String
 }
 
 impl Project
@@ -27,6 +28,11 @@ impl Project
     {
         self.default_task.as_ref()
     }
+
+    pub fn default_task_name(&self) -> &str 
+    {
+        &self.default
+    }
 }
 
 /// Creates an example project that matches the template project.toml
@@ -38,7 +44,8 @@ pub fn generate_template_project(name: &String) -> Project
     Project { 
         name: name.to_string(), 
         tasks, 
-        default_task: Some(default_task)
+        default_task: Some(default_task),
+        default: String::from("main")
     }
 }
 
@@ -98,7 +105,15 @@ pub fn read_project(flags: &Flags) -> Result<Project, String>
             }
         }, 
         tasks: HashMap::new(),
-        default_task: None
+        default_task: None,
+        default: match project_table.get("default_task") {
+            Some(v) if v.is_str() => v.as_str().unwrap().to_string(),
+            Some(v) => {
+                silentln!(flags, "Unexpected value for project default task, expected string, received {}. Default task set to \"main\".", v.type_str());
+                "main".to_string()
+            },
+            None => String::from("main")
+        }
     };
 
     // Start sequentially reading off tasks

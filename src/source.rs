@@ -241,21 +241,24 @@ pub fn extract_shaded_jars(task: &Task, flags: &Flags)
 {
     if let Some(jars) = task.get_shaded_jars()
     {
+        debugln!(flags, "Attempting to extract shaded jars");
         if !PathBuf::from("target/shaded-classes/").exists()
         {
             match fs::create_dir_all("target/shaded-classes/") {
-                Ok(_) => (),
+                Ok(_) => debugln!(flags, "Created shaded classes folder"),
                 Err(e) => {
                     silentln!(flags, "Could not create directory for shaded classes. Error: {}, aborting...", e);
                     exit(4);
                 }
             }
         } else {
+            debugln!(flags, "Cleaning shaded classes folder");
             clean_shaded_classes(flags);
         }
 
         for j in jars
         {
+            debugln!(flags, "Extracting .jar file {} for shading", j);
             let file = match File::open(j) {
                 Ok(f) => f,
                 Err(e) => {
@@ -271,10 +274,10 @@ pub fn extract_shaded_jars(task: &Task, flags: &Flags)
                     exit(3);
                 }
             };
-
+            debugln!(flags, "Successfully opened .jar file {}", j);
 
             match archive.extract("target/shaded-classes/") {
-                Ok(_) => (),
+                Ok(_) => debugln!(flags, "Successfully extracted .jar file {}", j),
                 Err(e) => {
                     silentln!(flags, "Could not extract {} into target/shaded-classes/, error: {}. Aborting...", j, e);
                     exit(5);

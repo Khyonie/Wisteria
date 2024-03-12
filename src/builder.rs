@@ -295,9 +295,31 @@ pub fn package(task: &Task, project: &Project, targets: &Vec<String>, flags: &Fl
         // Package shaded
         if task.get_shaded_jars().is_some()
         {
+            debugln!(flags, "Packaging shaded jars into {}", target);
             // Shade
             let mut command = Command::new("jar");
             command.args(["-uf", target, "-C", "target/shaded-classes/", "."]);
+
+            match command.output()
+            {
+                Ok(o) => {
+                    let output = String::from_utf8(o.stdout).unwrap();
+                    if !output.is_empty()
+                    {
+                        silentln!(flags, "{}", output);
+                    }
+
+                    let errors = String::from_utf8(o.stderr).unwrap();
+                    if !errors.is_empty()
+                    {
+                        silentln!(flags, "{}", errors);
+                    }
+                }
+                Err(e) => {
+                    silentln!(flags, "Could not package shaded classes into target {}, error: {}", target, e);
+                    exit(4);
+                }
+            }
         }
     }
 
