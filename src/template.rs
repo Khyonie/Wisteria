@@ -17,7 +17,7 @@ name = "{PROJECT_NAME}"
 # Keys with a ★ are required for the task to be able to be built/ran
 [task]
 # A short descriptor of this task
-#description = A Java project
+#description = "A Java project"
 
 # ★ Source folders for your project 
 #   After changing this, run wisteria update to update the classpath and reflect any changes
@@ -36,7 +36,7 @@ libraries = [ "lib/" ]
 
 # If your project is an executable, specify the entry point (where your static void main() is)
 # This setting is required to run a task as executable
-#entry = my.program.EntryClass
+#entry = "my.program.EntryClass"
 
 # Files to package in when building this task
 #include = []

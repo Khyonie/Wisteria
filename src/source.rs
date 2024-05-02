@@ -212,7 +212,7 @@ pub fn generate_classpath_exclude_shaded(task: &Task, flags: &Flags) -> String
     {
         for j in jars
         {
-            classpath = classpath.replace(j, "");
+            classpath = classpath.replace(&format!("{} ", j), "");
         }
     }
 

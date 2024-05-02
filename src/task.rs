@@ -93,13 +93,20 @@ impl CompilerOptions
         options
     }
 
-    pub fn to_compiler_arguments(&self) -> Vec<String>
+    pub fn to_compiler_arguments(&self, flags: &Flags, task: &Task) -> Vec<String>
     {
         let mut compiler_args: Vec<String> = Vec::new();
 
         if self.enable_preview_features 
         {
+            if task.java_version().is_none()
+            {
+                silentln!(flags, "Task explicitly enables Java preview features, but no Java release was specified. Add a \"java_version\" entry to the default task or current task \"{}\" in your project.toml file using your favorite text editor. Aborting...", task.get_name());
+                exit(7);
+            }
             compiler_args.push(String::from("--enable-preview"));
+            compiler_args.push(String::from("--release"));
+            compiler_args.push(task.java_version().unwrap_or(8).to_string());
         }
         if self.show_deprecated 
         {

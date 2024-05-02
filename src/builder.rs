@@ -83,12 +83,12 @@ pub fn build_task(task: &Task, project: &Project, information: &BuildInformation
         compile_command.args(["--class-path", libraries]);
     }
 
-    for flag in task.compiler_options().to_compiler_arguments()
+    for flag in task.compiler_options().to_compiler_arguments(&flags, &task)
     {
         compile_command.arg(flag);
     }
 
-    debugln!(flags, "Compiler options: {:?}", task.compiler_options().to_compiler_arguments());
+    debugln!(flags, "Compiler options: {:?}", task.compiler_options().to_compiler_arguments(flags, &task));
 
     for option in options
     {
@@ -134,13 +134,13 @@ pub fn build_task(task: &Task, project: &Project, information: &BuildInformation
                 println!("{}", &stderr);
                 if !stderr.starts_with("Note: ")
                 {
-                    clean_binary_folder_noerr(flags);
+                    //clean_binary_folder_noerr(flags);
                     exit(3);
                 }
             }
         },
         Err(e) => {
-            clean_binary_folder_noerr(flags);
+            //clean_binary_folder_noerr(flags);
             silentln!(flags, "Could not compile project. Error: {}", e);
             exit(3);
         }
@@ -330,7 +330,6 @@ pub fn package(task: &Task, project: &Project, targets: &Vec<String>, flags: &Fl
 
 pub fn run_target(target: &String, options: Vec<String>, flags: &Flags)
 {
-    clean_binary_folder(flags);
     let java_executable = match flags.use_java_executable.as_ref()
     {
         Some(s) => format!("{}/bin/java", s).replace("//", "/"),
@@ -345,6 +344,7 @@ pub fn run_target(target: &String, options: Vec<String>, flags: &Flags)
         command.arg(option);
     }
 
+    silentln!(flags, "V V V");
     let mut child_process = match command.spawn()
     {
         Ok(child) => child,
@@ -354,6 +354,7 @@ pub fn run_target(target: &String, options: Vec<String>, flags: &Flags)
         }
     };
 
+    //clean_binary_folder(flags);
 
     let exit_code = match child_process.wait()
     {
@@ -372,6 +373,7 @@ pub fn run_target(target: &String, options: Vec<String>, flags: &Flags)
     }
 }
 
+/*
 pub fn clean_binary_folder(flags: &Flags)
 {
     debugln!(flags, "Removing binary output folder");
@@ -384,6 +386,7 @@ pub fn clean_binary_folder(flags: &Flags)
         }
     }
 }
+*/
 
 pub fn clean_binary_folder_noerr(flags: &Flags)
 {

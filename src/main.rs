@@ -64,18 +64,18 @@ Options:
         Skips printing the Wisteria header
     --bland, -b 
         Suppresses printing the fun flavor text when a project has finished building
-    --dry, -dr  (Only for "init" and "convert")
+    --no-backup, -n  (Only for "init" and "convert")
         Skips writing an updated project.toml to disk
     --recompile-all, -r (Only for "build" and "run")
         Compile all source files, not just source files that changed since last compilation
     --jdk <path to Java home>, -j <path to Java home> 
         Uses a specific JDK instead of a default JDK found through the user environment
     --use-manifest, -m
-        Uses a META-INF/MANIFEST.MF file in this project instead of creating one
+        Uses a META-INF/MANIFEST.MF file in this project instead of generating one
 "#;
 
 const HEADER: &str =
-r#"Wisteria v2.1.5 ~ Java Project Manager
+r#"Wisteria v2.1.7 ~ Java Project Manager
 Copyright (C) 2024  Hailey-Jane "Khyonie" Garrett <http://www.khyonieheart.coffee>
 
 This program comes with ABSOLUTELY NO WARRANTY; for details type `wisteria warranty'.
@@ -127,33 +127,66 @@ fn main()
             }
             break;
         }
-        match a.to_lowercase().as_str()
+
+        if a.starts_with("--")
         {
-            "--silent" | "-s" => flags.silent = true,
-            "--debug" | "-d" => flags.debug = true,
-            "--noheader" | "-h" => flags.no_header = true,
-            "--jdk" | "-j" => {
-                if let Some(version) = arg_iter.next()
-                {
-                    if !PathBuf::from(version).exists()
+            match a.split_at(2).0
+            {
+                "--silent" => flags.silent = true,
+                "--debug" => flags.debug = true,
+                "--noheader" => flags.no_header = true,
+                "--jdk" => {
+                    if let Some(version) = arg_iter.next()
                     {
-                        debugln!(flags, "Java executable does not point to any file, aborting...");
+                        if !PathBuf::from(version).exists()
+                        {
+                            silentln!(flags, "Java executable does not point to any file, aborting...");
+                            exit(1);
+                        }
+
+                        flags.use_java_executable = Some(version.to_string());
+                        silentln!(flags, "Using custom Java home path {}", version.to_string());
+                    } else {
+                        silentln!(flags, "Java executable flag given with no filepath, aborting...");
                         exit(1);
                     }
-
-                    flags.use_java_executable = Some(version.to_string());
-                    silentln!(flags, "Using custom Java home path {}", version.to_string());
-                } else {
-                    silentln!(flags, "Java executable flag given with no filepath, aborting...");
-                    exit(1);
+                },
+                "--bland" => flags.bland = true,
+                "--no-backup" => flags.dry = true,
+                "--recompile-all" => flags.recompile_all = true, 
+                "--use-manifest" => flags.use_existing_manifest = true,
+                _ => {
+                    wisteria_args.push(a.to_string());
                 }
-            },
-            "--bland" | "-b" => flags.bland = true,
-            "--dry" | "-dr" => flags.dry = true,
-            "--recompile-all" | "-r" => flags.recompile_all = true, 
-            "--use-manifest" | "-m" => flags.use_existing_manifest = true,
-            _ => {
-                wisteria_args.push(a.to_string());
+            }
+
+            continue;
+        }
+
+        // Shorthand format
+        if a.starts_with("-")
+        {
+            if a.len() == 1 
+            {
+                silentln!(flags, "At least one flag must be specified after -, aborting...");
+                exit(1);
+            }
+
+            for c in a[1..].chars()
+            {
+                match c
+                {
+                    's' => flags.silent = true,
+                    'd' => flags.debug = true,
+                    'b' => flags.bland = true,
+                    'n' => flags.dry = true,
+                    'r' => flags.recompile_all = true,
+                    'm' => flags.use_existing_manifest = true,
+                    _ => {
+                        silentln!(flags, "Unknown flag shorthand \"{}\", aborting...", c);
+                        exit(1);
+                    }
+                }
             }
         }
     }
@@ -162,15 +195,12 @@ fn main()
 
     if arguments.len() == 1
     {
-        if !flags.silent
+        if !flags.no_header
         {
-            if !flags.no_header
-            {
-                println!("{}", HEADER);
-            }
-            println!("No operation given.");
-            println!("{}", NO_OPERATION_ERROR);
+            silentln!(flags, "{}", HEADER);
         }
+        silentln!(flags, "No operation given.");
+        silentln!(flags, "{}", NO_OPERATION_ERROR);
         exit(2)
     }
 
@@ -190,7 +220,7 @@ fn main()
 
     if !flags.no_header
     {
-        println!("{}", HEADER);
+        silentln!(flags, "{}", HEADER);
     }
 
     // Attempt to find javac

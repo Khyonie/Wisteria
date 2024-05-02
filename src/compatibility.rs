@@ -169,9 +169,15 @@ fn parse_task(data: &Table, task: &mut Table, flags: &Flags)
             // String array options
             "output" if v.is_array() => {
                 debugln!(flags, "\tRegistering output folders");
-                let array_value = v.clone();
+                let updated_array: Vec<Value> = v.as_array().unwrap()
+                    .iter()
+                    .map(| v | match v {
+                        Value::String(s) => Value::String(s.replace("{NAME}", "{PROJECT_NAME}")), // Update older special {NAME}
+                        _ => v.clone()
+                    })
+                    .collect();
 
-                task.insert(String::from(k), array_value);
+                task.insert(String::from(k), Value::Array(updated_array));
             },
             "output" => silentln!(flags, "Invalid outputs {:?}, expected an array, received {}, skipping...", &v, &v.type_str()),
             "input" if v.is_array() => {

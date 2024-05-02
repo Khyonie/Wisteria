@@ -118,9 +118,14 @@ fn extract_java_version(output: Output, version: &mut MajorVersion) -> String
                 {
                     version.version = ver.split(".").collect::<Vec<&str>>()[1].parse().unwrap();
                 } else { // Newer java versions
-                    version.version = match ver.split_once(".").unwrap()
+                    version.version = match ver.split_once(".")
                     {
-                        (major, _) => major.parse().unwrap()
+                        Some(s) => { 
+                            match s {
+                                (major, _) => major.parse().unwrap()
+                            }
+                        },
+                        None => ver.parse().unwrap() // In case the version is just the major version
                     };
                 }
 
