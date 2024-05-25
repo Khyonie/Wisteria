@@ -188,7 +188,11 @@ fn main()
                     }
                 }
             }
+
+            continue;
         }
+
+        wisteria_args.push(a.to_string());
     }
 
     arguments = wisteria_args;

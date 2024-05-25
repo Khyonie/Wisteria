@@ -185,11 +185,13 @@ impl Task
 
         self.output = self.output.iter().map(| s | source::canonicalize_path(s.clone(), &self, project, flags)).collect();
 
+        /*
         self.include = match &self.include
         {
             Some(i) => Some(i.iter().map(| s | source::canonicalize_path(s.clone(), &self, project, flags)).collect()),
             None => None
         };
+        */
 
         self
     }
