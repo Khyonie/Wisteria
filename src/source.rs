@@ -122,7 +122,7 @@ pub fn generate_source(task: &Task, project: &Project, metadata: &Metadata, flag
         {
             is_first_source = false;
         } else {
-            source_files.push(' ');
+            source_files.push(platform_seperator);
         }
         source_paths.push_str(&source);
         source_paths.push(' ');
