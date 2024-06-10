@@ -115,8 +115,15 @@ pub fn generate_source(task: &Task, project: &Project, metadata: &Metadata, flag
     let mut source_paths: String = String::new();
 
     // Build sources
+    let mut is_first_source: bool = true;
     for source in task.get_sources()
     {
+        if is_first_source
+        {
+            is_first_source = false;
+        } else {
+            source_files.push(' ');
+        }
         source_paths.push_str(&source);
         source_paths.push(' ');
         let source_path = PathBuf::from(source);
