@@ -1,0 +1,54 @@
+# This is where you can configure your project and add/remove/configure tasks 
+[project]
+# The name of your project
+name = "Wisteria"
+
+#-------------------------------------------------------------------------------- 
+# Default task settings (optional)
+# All tasks inherit settings from this task. If this task does not exist, all tasks must specify at minimum "source" and "output"
+# Keys with a ★ are required for the task to be able to be built/ran
+[task]
+# A short descriptor of this task
+description = "Wisteria Java runtime."
+
+# ★ Source folders for your project 
+#   After changing this, run wisteria update to update the classpath and reflect any changes
+source = [ "wisteria4j/" ]
+
+# ★ Build targets
+output = [ "target/{TASK_NAME}/WisteriaJavaRuntime-0.1.0.jar" ]
+
+# Libraries, individual .jar files will be added to the classpath when building and running. Folders will have their contents added recursively
+# After changing this, run wisteria update to update the classpath and reflect any changes
+#libraries = [ "lib/" ]
+
+# Individual .jar files to be shaded in with every target (that is, their contained classes will be stored inside each target)
+# Shaded jars will be included on the compilation classpath but will not be included in an automatically generated MANIFEST.MF classpath
+#shaded_jars = [ "lib/MyLittleLibrary.jar" ]
+
+# If your project is an executable, specify the entry point (where your static void main() is)
+# This setting is required to run a task as executable
+entry = "coffee.khyonieheart.wisteria4j.WisteriaRuntime"
+
+# Files to package in when building this task
+#include = []
+
+# Options to be passed to javac when compiling
+# See the Wisteria wiki for more compiler options
+#[task.compiler]
+#enable_preview_features = true
+#extra_flags = "--Xlint:cast" 
+
+# Minimum version of Java required for this task to build or to be run
+#java_version = 8
+
+# Javadocs for given libraries
+# Add javadocs in a subsection of your task. Section names must match exactly with a library, including its relative path
+# After changing this, run wisteria update to update classpath and reflect any changes
+#[task.javadocs]
+#"lib/MyLibrary.jar" = "https://a.link/to/javadocs"
+
+#-------------------------------------------------------------------------------- 
+# Add new tasks by writing a header with the name "task_<name>"
+[task_main]
+
