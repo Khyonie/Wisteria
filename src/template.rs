@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use regex::Regex;
+use reqwest::blocking::Client;
 use xml::{common::XmlVersion, writer::XmlEvent, EmitterConfig, EventWriter};
 
-use crate::{configuration::Configuration, dependency::UpdateContext, eclipse::eq_sep_config::EclipseConfiguration, nature::Nature, project::Project, Metadata};
+use crate::{configuration::Configuration, dependency::UpdateContext, dependency::Dependency, eclipse::eq_sep_config::EclipseConfiguration, nature::Nature, project::Project, Metadata, util::files, maven::{repository, repository::ArtifactVersion}};
 
 const PROJECT_TOML_TEMPLATE: &str = 
 r#"[project] # Fill out your basic project information here
@@ -109,10 +110,18 @@ pub fn generate_classpath(project: &Project, configuration: &Configuration, rege
         width += 5;
         let size = dependencies.len();
 
+        println!("Dependencies: [{:?}]", &dependencies);
         for (index, d) in dependencies.iter().enumerate()
         {
             print!("({}/{size}) Resolving {:width$}", index + 1, format!("{d} ... "));
-            match project.dependencies().get(d).unwrap().resolve(d, configuration.environment(), regexes, UpdateContext::ResolveOnly)
+            let dependencies_opt = match project.dependencies().get(d) {
+                Some(dep) => dep,
+                None => {
+                    println!("Unknown dependency \"{d}\"!");
+                    continue
+                },
+            };
+            match dependencies_opt.resolve(d, configuration.environment(), regexes, UpdateContext::ResolveOnly)
             {
                 Ok(paths) => {
                     for path in paths 
@@ -256,6 +265,56 @@ pub fn generate_pom(project: &Project) -> Result<String, String>
 
     writer.write(XmlEvent::start_element("version")).map_err(| e | format!("{e}"))?;
     writer.write(XmlEvent::characters(project.info().version())).map_err(| e | format!("{e}"))?;
+    writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+
+    // Dependencies
+    writer.write(XmlEvent::start_element("dependencies")).map_err(| e | format!("{e}"))?;
+
+    let client: Client = Client::builder()
+        .user_agent(files::USER_AGENT)
+        .build()
+        .unwrap();
+
+    for (_, dependency) in project.dependencies()
+    {
+        match dependency
+        {
+            Dependency::FetchFromMaven { url, group_id, artifact_id, version, classifier, update_policy: _, javadoc: _ } => {
+                writer.write(XmlEvent::start_element("dependency")).map_err(| e | format!("{e}"))?;
+
+                writer.write(XmlEvent::start_element("groupId")).map_err(| e | format!("{e}"))?;
+                writer.write(XmlEvent::characters(&format!("{group_id}"))).map_err(| e | format!("{e}"))?;
+                writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+
+                writer.write(XmlEvent::start_element("artifactId")).map_err(| e | format!("{e}"))?;
+                writer.write(XmlEvent::characters(&format!("{artifact_id}"))).map_err(| e | format!("{e}"))?;
+                writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+
+                writer.write(XmlEvent::start_element("version")).map_err(| e | format!("{e}"))?;
+                match version 
+                {
+                    Some(v) => {
+                        writer.write(XmlEvent::characters(&format!("{v}"))).map_err(| e | format!("{e}"))?;
+                    },
+                    None => {
+                        match repository::get_version(&client, url, group_id, artifact_id, classifier.as_ref(), &ArtifactVersion::Latest) {
+                            Ok(v) => {
+                                writer.write(XmlEvent::characters(&format!("{}", v.0))).map_err(| e | format!("{e}"))?;
+                            },
+                            Err(e) => {
+                                println!("Could not get version for artifact {artifact_id} for pom.xml!: ({e})");
+                                writer.write(XmlEvent::characters("unknown")).map_err(| e | format!("{e}"))?;
+                            }
+                        }
+                    }
+                }
+                writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+
+                writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+            }
+            _ => continue
+        }
+    }
     writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
 
     // End

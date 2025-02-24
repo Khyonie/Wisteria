@@ -151,7 +151,7 @@ impl CompilerFlags
     {
         match self 
         {
-            CompilerFlags::ReleaseTarget { version } => vec![String::from("-release"), version.to_string()],
+            CompilerFlags::ReleaseTarget { version } => vec![String::from("--release"), version.to_string()],
             CompilerFlags::EnablePreviewFeatures { setting } => {
                 if *setting 
                 {

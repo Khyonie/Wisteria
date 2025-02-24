@@ -1,9 +1,10 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
 use regex::Regex;
+use reqwest::blocking::Client;
 use toml::Table;
 
-use crate::{configuration::Configuration, util::{files, toml_utils}};
+use crate::{configuration::Configuration, maven::repository::{self, ArtifactVersion}, util::{files, toml_utils}};
 
 #[derive(Clone)]
 pub enum Dependency
@@ -13,7 +14,7 @@ pub enum Dependency
     LocalRepository{ repository: String, name: String, version: String, update_policy: UpdatePolicy, javadoc: Option<String> },
 
     FetchFromUrl{ url: String, update_policy: UpdatePolicy, javadoc: Option<String> },
-    FetchFromMaven{ url: String, group_id: String, artifact_id: String, version: String, artifact_name: String, classifier: Option<String>, update_policy: UpdatePolicy, javadoc: Option<String> },
+    FetchFromMaven{ url: String, group_id: String, artifact_id: String, version: Option<String>, classifier: Option<String>, update_policy: UpdatePolicy, javadoc: Option<String> },
     FetchFromGithub{ username: String, repository: String, asset: String, tag: String, update_policy: UpdatePolicy, javadoc: Option<String> },
 
     BuildFromScript{ run: Vec<String>, target: String, update_policy: UpdatePolicy, javadoc: Option<String> }
@@ -98,12 +99,10 @@ impl Dependency
                         let url: String = toml_utils::read_string("url", toml).unwrap_or(String::from("https://repo1.maven.org/maven2/"));
                         let group_id: String = toml_utils::read_string("group_id", toml)?;
                         let artifact_id: String = toml_utils::read_string("artifact_id", toml)?;
-                        let version: String = toml_utils::read_string("version", toml).unwrap_or(String::from("NEXUS_LATEST"));
-                        let artifact_name: String = toml_utils::read_string("artifact_name", toml)
-                            .unwrap_or(format!("{artifact_id}-{version}"));
+                        let version = toml_utils::read_string("version", toml).ok();
                         let classifier: Option<String> = toml_utils::read_string("classifier", toml).ok();
 
-                        Ok(Dependency::FetchFromMaven { url, group_id, artifact_id, version, artifact_name, classifier, update_policy, javadoc })
+                        Ok(Dependency::FetchFromMaven { url, group_id, artifact_id, version, classifier, update_policy, javadoc })
                     }
                     "fetchFromGithub" => {
                         let username: String = toml_utils::read_string("username", toml)?;
@@ -138,7 +137,7 @@ impl Dependency
             Dependency::LocalFolder { path: _, recursive: _ } => "loadFolder",
             Dependency::LocalRepository { repository: _, name: _, version: _, update_policy: _, javadoc: _ } => "localRepository",
             Dependency::FetchFromUrl { url: _, update_policy: _, javadoc: _ } => "fetchFromUrl",
-            Dependency::FetchFromMaven { url: _, group_id: _, artifact_id: _, version: _, artifact_name: _, classifier: _, update_policy: _, javadoc: _ } => "fetchFromMaven",
+            Dependency::FetchFromMaven { url: _, group_id: _, artifact_id: _, version: _, classifier: _, update_policy: _, javadoc: _ } => "fetchFromMaven",
             Dependency::FetchFromGithub { username: _, repository: _, asset: _, tag: _, update_policy: _, javadoc: _ } => "fetchFromGithub",
             Dependency::BuildFromScript { run: _, target: _, update_policy: _, javadoc: _ } => "buildFromScript",
         }
@@ -168,6 +167,7 @@ impl Dependency
                     Err(e) => return Err((format!("Could not canonicalize path \"{path}\": {e}"), 62))
                 };
 
+                println!("File found: {}", &canon_path.to_string_lossy());
                 Ok(vec![canon_path])
             }
             Dependency::LocalRepository { repository, name, version, update_policy, javadoc } => todo!(),
@@ -184,13 +184,43 @@ impl Dependency
 
                 Ok(vec![PathBuf::from(filepath)])
             }
-            Dependency::FetchFromMaven { url, group_id, artifact_id, version, artifact_name, classifier, update_policy, javadoc } => {
+            Dependency::FetchFromMaven { url, group_id, artifact_id, version, classifier, update_policy, javadoc } => {
                 let classifier_string = match classifier {
                     Some(s) => format!("-{}", s.clone()),
                     None => String::new()
                 };
 
-                let filepath = format!(".wisteria/cache/{group_id}/{artifact_id}/{version}/{artifact_id}{classifier_string}.jar");
+                let target_version = match version {
+                    Some(version) => {
+                        match version.as_str() 
+                        {
+                            "latest" => ArtifactVersion::Latest,
+                            "release" => ArtifactVersion::Release,
+                            _ => ArtifactVersion::Version { version: version.to_string() }
+                        }
+                    },
+                    None => ArtifactVersion::Latest
+                };
+
+                let client: Client = Client::builder()
+                    .user_agent(files::USER_AGENT)
+                    .build()
+                    .unwrap();
+
+                let version = match repository::get_version(&client, url, group_id, artifact_id, classifier.as_ref(), &target_version) {
+                    Ok(t) => t,
+                    Err(e) => { 
+                        println!("{e}"); 
+                        return Ok(Vec::new())
+                    }
+                };
+
+                let value_postfix = match version.1 {
+                    Some(v) => format!("-{v}"),
+                    None => String::new()
+                };
+
+                let filepath = format!(".wisteria/cache/{group_id}/{artifact_id}/{}/{artifact_id}{value_postfix}{classifier_string}.jar", version.0);
                 let path: PathBuf = PathBuf::from(&filepath);
 
                 if update_policy.should_update(&update)
@@ -204,9 +234,15 @@ impl Dependency
                         return Ok(vec![path]);
                     }
 
-                    let full_url = format!("{url}{}/{artifact_id}/{version}/{artifact_name}{classifier_string}.jar", group_id.replace('.', "/"));
+                    let target_url = match repository::get_artifact(&client, url, group_id, artifact_id, classifier.as_ref(), &target_version) {
+                        Ok(t) => t,
+                        Err(e) => { 
+                            println!("{e}"); 
+                            return Ok(Vec::new())
+                        }
+                    };
 
-                    files::download(artifact_id.to_string(), full_url, filepath)?;
+                    files::download(artifact_id.to_string(), target_url, filepath)?;
                 } else {
                     println!("Not updating");
                 }
@@ -276,6 +312,9 @@ impl Dependency
                     }
                 }
 
+                let text_plural = { if files.len() == 1 { "library" } else { "libraries" } };
+
+                println!("Found {} {text_plural}", &files.len());
                 Ok(files)
             }
         }
@@ -295,7 +334,7 @@ impl Dependency
             Dependency::LocalFolder { path, recursive } => None,
             Dependency::LocalRepository { repository, name, version, update_policy, javadoc } => Some(shaded.contains(&String::from(name))),
             Dependency::FetchFromUrl { url, update_policy, javadoc } => Some(shaded.contains(&String::from(name))),
-            Dependency::FetchFromMaven { url, group_id, artifact_id, version, artifact_name, classifier, update_policy, javadoc } => Some(shaded.contains(&String::from(name))),
+            Dependency::FetchFromMaven { url, group_id, artifact_id, version, classifier, update_policy, javadoc } => Some(shaded.contains(&String::from(name))),
             Dependency::FetchFromGithub { username, repository, asset, tag, update_policy, javadoc } => Some(shaded.contains(&String::from(name))),
             Dependency::BuildFromScript { run, target, update_policy, javadoc  } => Some(shaded.contains(&String::from(name)))
         }

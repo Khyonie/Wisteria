@@ -18,6 +18,7 @@ mod util;
 mod eclipse;
 mod maven;
 mod java;
+mod format;
 mod compiler;
 mod template;
 
@@ -34,7 +35,7 @@ pub struct Metadata
     configuration: String
 }
 
-pub const VERSION: &str = "3.1.0";
+pub const VERSION: &str = "3.2.3";
 
 fn main() 
 {
@@ -81,16 +82,16 @@ fn main()
         exit(1);
     }
 
-    let project: Option<Project> = load_project(flags.use_project).ok();
+    let project: Result<Project, (String, u8)> = load_project(flags.use_project);
     
     match args[1].to_lowercase().as_str()
     {
         "refresh" => {
             let project: Project = match project {
-                Some(p) => p,
-                None => {
-                    println!("Could not read a Wisteria project.toml file in this directory.");
-                    exit(1)
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
+                    exit(e.1.into())
                 }
             };
             
@@ -141,10 +142,10 @@ fn main()
         }
         "clean" => {
             let project: Project = match project {
-                Some(p) => p,
-                None => {
-                    println!("Could not read a Wisteria project.toml file in this directory.");
-                    exit(1)
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
+                    exit(e.1.into())
                 }
             };
 
@@ -185,10 +186,10 @@ fn main()
         }
         "update" => {
             let project: Project = match project {
-                Some(p) => p,
-                None => {
-                    println!("Could not read a Wisteria project.toml file in this directory.");
-                    exit(1)
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
+                    exit(e.1.into())
                 }
             };
             
@@ -290,10 +291,10 @@ fn main()
         }
         "info" => {
             let project: Project = match project {
-                Some(p) => p,
-                None => {
-                    println!("Could not read a Wisteria project.toml file in this directory.");
-                    exit(1)
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
+                    exit(e.1.into())
                 }
             };
             project.print_info();
@@ -301,10 +302,10 @@ fn main()
         }
         "switch" => {
             let project: Project = match project {
-                Some(p) => p,
-                None => {
-                    println!("Could not read a Wisteria project.toml file in this directory.");
-                    exit(1)
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
+                    exit(e.1.into())
                 }
             };
             
@@ -405,10 +406,10 @@ fn main()
         }
         _ => {
             let project: Project = match project {
-                Some(p) => p,
-                None => {
-                    println!("Could not read a Wisteria project.toml file in this directory.");
-                    exit(1)
+                Ok(p) => p,
+                Err(e) => {
+                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
+                    exit(e.1.into())
                 }
             };
 

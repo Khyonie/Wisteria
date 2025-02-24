@@ -1,36 +1,116 @@
-use reqwest::blocking::get;
 use serde::Deserialize;
-use serde_json::from_str;
 
+//
+// XML decoding stuff
+//
 #[derive(Deserialize)]
-pub struct NexusEntry
+pub struct MavenMetadata
 {
-    version: String
+    versioning: MavenVersionsContainer
 }
 
 #[derive(Deserialize)]
-pub struct NexusItems
+struct MavenVersionsContainer
 {
-    items: Vec<NexusEntry>
+    latest: Option<String>,
+    release: Option<String>,
+    versions: MavenVersionsList
 }
 
-pub fn items(url: &str, group_id: &str, artifact_id: &str) -> Result<Vec<NexusEntry>, String>
+#[derive(Deserialize)]
+struct MavenVersionsList
 {
-    let url = format!("{url}?group={group_id}&name={artifact_id}");
-    println!("{url}");
+    version: Vec<String>
+}
 
-    let response = get(&url).map_err(| e | format!("{e}"))?
-        .text().unwrap();
+#[derive(Deserialize)]
+pub struct VersionSnapshot
+{
+    classifier: Option<String>,
+    extension: String,
+    value: String
+}
 
-    println!("{response}");
+#[derive(Deserialize)]
+pub struct SnapshotMetadata
+{
+    versioning: SnapshotVersionContainer
+}
 
-    let items: NexusItems = from_str(&response).map_err(| e | format!("{e}"))?;
+#[derive(Deserialize)]
+struct SnapshotVersionContainer
+{
+    snapshotVersions: SnapshotVersionList,
+}
 
-    println!("Nexus items");
-    for i in &items.items
+#[derive(Deserialize)]
+struct SnapshotVersionList
+{
+    snapshotVersion: Vec<SnapshotVersion>
+}
+
+#[derive(Deserialize)]
+pub struct SnapshotVersion 
+{
+    classifier: Option<String>,
+    extension: String,
+    value: String
+}
+
+impl MavenMetadata
+{
+    pub fn latest(&self) -> Option<&String>
     {
-        println!("{}", i.version);
+        self.versioning.latest.as_ref()
     }
 
-    Ok(items.items)
+    pub fn release(&self) -> Option<&String>
+    {
+        self.versioning.release.as_ref()
+    }
+
+    pub fn versions(&self) -> &[String]
+    {
+        self.versioning.versions.version.as_ref()
+    }
+}
+
+impl SnapshotMetadata
+{
+    pub fn from_classifier(&self, classifier: Option<&String>) -> Option<String>
+    {
+        if classifier.is_none()
+        {
+            // Locate the plain jar
+            for snapshot in &self.versioning.snapshotVersions.snapshotVersion
+            {
+                if snapshot.classifier.is_none() && snapshot.extension == "jar"
+                {
+                    return Some(snapshot.value.clone())
+                }
+            }
+
+            return None
+        }
+
+        if let Some(classifier) = classifier
+        {
+            for snapshot in &self.versioning.snapshotVersions.snapshotVersion
+            {
+                if snapshot.extension != "jar"
+                {
+                    continue
+                }
+
+                if let Some(artifact_classifier) = &snapshot.classifier
+                {
+                    if classifier == artifact_classifier
+                    {
+                        return Some(snapshot.value.clone())
+                    }
+                }
+            }
+        }
+        None
+    }
 }
