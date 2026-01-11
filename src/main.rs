@@ -141,14 +141,6 @@ fn main()
             exit(1)
         }
         "clean" => {
-            let project: Project = match project {
-                Ok(p) => p,
-                Err(e) => {
-                    println!("Could not read a Wisteria project.toml file in this directory. ({})", e.0);
-                    exit(e.1.into())
-                }
-            };
-
             match args[2].to_lowercase().as_str()
             {
                 "classes" => {
@@ -530,5 +522,5 @@ fn setup_global_config_file() -> Result<(), String>
 fn print_header()
 {
     println!("Wisteria v{VERSION}");
-    println!("Copyright © 2024 Hailey-Jane \"Khyonie\" Garrett <http://www.khyonieheart.coffee/>");
+    println!("Copyright © 2025 Hailey-Jane \"Khyonie\" Garrett <http://www.khyonieheart.coffee/>");
 }

@@ -144,11 +144,6 @@ impl Project
         &self.dependencies
     }
 
-    pub fn configurations(&self) -> &HashMap<String, Configuration>
-    {
-        &self.info.configurations
-    }
-
     pub fn print_info(&self) 
     {
         println!("╒══[ Information for project \"{}\" ]═════════════", self.info.name);

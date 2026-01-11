@@ -231,7 +231,7 @@ pub fn generate_project(project: &Project) -> Result<String, String>
     Ok(String::from_utf8(bytes).unwrap())
 }
 
-pub fn generate_pom(project: &Project) -> Result<String, String>
+pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<String, String>
 {
     let mut bytes: Vec<u8> = Vec::new();
 
@@ -267,6 +267,12 @@ pub fn generate_pom(project: &Project) -> Result<String, String>
     writer.write(XmlEvent::characters(project.info().version())).map_err(| e | format!("{e}"))?;
     writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
 
+    writer.write(XmlEvent::start_element("properties")).map_err(| e | format!("{e}"))?;
+    writer.write(XmlEvent::start_element("maven.compiler.release")).map_err(| e | format!("{e}"))?;
+    writer.write(XmlEvent::characters(configuration.java_version().to_string().as_str())).map_err(| e | format!("{e}"))?;
+    writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+    writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
+
     // Dependencies
     writer.write(XmlEvent::start_element("dependencies")).map_err(| e | format!("{e}"))?;
 
@@ -279,33 +285,27 @@ pub fn generate_pom(project: &Project) -> Result<String, String>
     {
         match dependency
         {
-            Dependency::FetchFromMaven { url, group_id, artifact_id, version, classifier, update_policy: _, javadoc: _ } => {
+            Dependency::FetchFromMaven { url, group_id, artifact_id, version, classifier, update_policy, javadoc } => {
                 writer.write(XmlEvent::start_element("dependency")).map_err(| e | format!("{e}"))?;
 
                 writer.write(XmlEvent::start_element("groupId")).map_err(| e | format!("{e}"))?;
-                writer.write(XmlEvent::characters(&format!("{group_id}"))).map_err(| e | format!("{e}"))?;
+                writer.write(XmlEvent::characters("{group_id}")).map_err(| e | format!("{e}"))?;
                 writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
 
                 writer.write(XmlEvent::start_element("artifactId")).map_err(| e | format!("{e}"))?;
-                writer.write(XmlEvent::characters(&format!("{artifact_id}"))).map_err(| e | format!("{e}"))?;
+                writer.write(XmlEvent::characters("{artifact_id}")).map_err(| e | format!("{e}"))?;
                 writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;
 
                 writer.write(XmlEvent::start_element("version")).map_err(| e | format!("{e}"))?;
                 match version 
                 {
                     Some(v) => {
-                        writer.write(XmlEvent::characters(&format!("{v}"))).map_err(| e | format!("{e}"))?;
+                        let maven_version = repository::get_version(&client, url, group_id, artifact_id, classifier.as_ref(), &ArtifactVersion::Version { version: v.clone() }).map_err(| e | format!("{e}"))?;
+                        writer.write(XmlEvent::characters("{artifact_id}-{maven_version}")).map_err(| e | format!("{e}"))?;
                     },
                     None => {
-                        match repository::get_version(&client, url, group_id, artifact_id, classifier.as_ref(), &ArtifactVersion::Latest) {
-                            Ok(v) => {
-                                writer.write(XmlEvent::characters(&format!("{}", v.0))).map_err(| e | format!("{e}"))?;
-                            },
-                            Err(e) => {
-                                println!("Could not get version for artifact {artifact_id} for pom.xml!: ({e})");
-                                writer.write(XmlEvent::characters("unknown")).map_err(| e | format!("{e}"))?;
-                            }
-                        }
+                        let maven_version = repository::get_version(&client, url, group_id, artifact_id, classifier.as_ref(), &ArtifactVersion::Latest).map_err(| e | format!("{e}"))?;
+                        writer.write(XmlEvent::characters("{artifact_id}-{maven_version}")).map_err(| e | format!("{e}"))?;
                     }
                 }
                 writer.write(XmlEvent::end_element()).map_err(| e | format!("{e}"))?;

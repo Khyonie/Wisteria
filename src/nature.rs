@@ -28,7 +28,7 @@ impl Nature
             },
             Nature::Maven => {
                 let _ = write(".settings/org.eclipse.m2e.core.prefs", eq_sep_config::generate_config(template::generate_eclipse_config(configuration)));
-                let _ = write("pom.xml", template::generate_pom(project).unwrap());
+                let _ = write("pom.xml", template::generate_pom(project, configuration).unwrap());
             },
         }
     }
