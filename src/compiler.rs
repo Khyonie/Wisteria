@@ -1,36 +1,33 @@
 use toml::Value;
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum CompilerFlags
-{
-    ReleaseTarget{ version: u8 },           // --release {VALUE}
-    EnablePreviewFeatures{ setting: bool }, // --enable-preview
+pub enum CompilerFlags {
+    ReleaseTarget { version: u8 },           // --release {VALUE}
+    EnablePreviewFeatures { setting: bool }, // --enable-preview
 
     // No more than one of:
-    JavadocAllLints{ setting: bool },       // -Xdoclint:all
-    JavadocLints{ lints: Vec<String> },     // -Xdoclint:{VALUE{,VALUE}}
+    JavadocAllLints { setting: bool },   // -Xdoclint:all
+    JavadocLints { lints: Vec<String> }, // -Xdoclint:{VALUE{,VALUE}}
 
     // No more than one of:
-    SourceLintAll{ setting: bool },         // -Xlint:all
-    SourceLints{ lints: Vec<String> },      // -Xlint:{VALUE{,VALUE}}
-    NoWarnings{ setting: bool },            // -nowarn
+    SourceLintAll { setting: bool },    // -Xlint:all
+    SourceLints { lints: Vec<String> }, // -Xlint:{VALUE{,VALUE}}
+    NoWarnings { setting: bool },       // -nowarn
 
-    DeprecationInfo{ setting: bool },       // -deprecation
-    StoreParameterNames{ setting: bool },   // -parameters
-    Encoding{ encoding: String }            // --encoding {VALUE}
+    DeprecationInfo { setting: bool },     // -deprecation
+    StoreParameterNames { setting: bool }, // -parameters
+    Encoding { encoding: String },         // --encoding {VALUE}
 }
 
-impl CompilerFlags
-{
-    pub fn from(name: &str, value: &Value) -> Result<Self, (String, u8)>
-    {
+impl CompilerFlags {
+    pub fn from(name: &str, value: &Value) -> Result<Self, (String, u8)> {
         match name
         {
             "release_target" => {
                 match value.as_integer()
                 {
                     Some(i) => {
-                        if i.is_negative() 
+                        if i.is_negative()
                         {
                             return Err((format!("Illegal Java version {i}, version must be positive"), 52));
                         }
@@ -64,7 +61,7 @@ impl CompilerFlags
                     Some(array) => {
                         let mut lints: Vec<String> = Vec::new();
 
-                        for v in array 
+                        for v in array
                         {
                             match v.as_str()
                             {
@@ -96,7 +93,7 @@ impl CompilerFlags
                     Some(array) => {
                         let mut lints: Vec<String> = Vec::new();
 
-                        for v in array 
+                        for v in array
                         {
                             match v.as_str()
                             {
@@ -147,22 +144,20 @@ impl CompilerFlags
         }
     }
 
-    pub fn get_canon_flag(&self) -> Vec<String> 
-    {
-        match self 
-        {
-            CompilerFlags::ReleaseTarget { version } => vec![String::from("--release"), version.to_string()],
+    pub fn get_canon_flag(&self) -> Vec<String> {
+        match self {
+            CompilerFlags::ReleaseTarget { version } => {
+                vec![String::from("--release"), version.to_string()]
+            }
             CompilerFlags::EnablePreviewFeatures { setting } => {
-                if *setting 
-                {
+                if *setting {
                     return vec![String::from("--enable-preview")];
                 }
 
                 Vec::new()
             }
             CompilerFlags::JavadocAllLints { setting } => {
-                if *setting 
-                {
+                if *setting {
                     return vec![String::from("-Xdoclint:all")];
                 }
 
@@ -171,8 +166,7 @@ impl CompilerFlags
             CompilerFlags::JavadocLints { lints } => {
                 let mut flag: String = String::from("-Xdoclint:");
 
-                for l in lints 
-                {
+                for l in lints {
                     flag.push_str(l);
                     flag.push(',');
                 }
@@ -182,8 +176,7 @@ impl CompilerFlags
                 vec![flag]
             }
             CompilerFlags::SourceLintAll { setting } => {
-                if *setting 
-                {
+                if *setting {
                     return vec![String::from("-Xlint:all")];
                 }
 
@@ -192,8 +185,7 @@ impl CompilerFlags
             CompilerFlags::SourceLints { lints } => {
                 let mut flag: String = String::from("-Xlint:");
 
-                for l in lints 
-                {
+                for l in lints {
                     flag.push_str(l);
                     flag.push(',');
                 }
@@ -203,30 +195,29 @@ impl CompilerFlags
                 vec![flag]
             }
             CompilerFlags::NoWarnings { setting } => {
-                if *setting 
-                {
+                if *setting {
                     return vec![String::from("-nowarn")];
                 }
 
                 Vec::new()
             }
             CompilerFlags::DeprecationInfo { setting } => {
-                if *setting 
-                {
+                if *setting {
                     return vec![String::from("-deprecation")];
                 }
 
                 Vec::new()
             }
             CompilerFlags::StoreParameterNames { setting } => {
-                if *setting 
-                {
+                if *setting {
                     return vec![String::from("-parameters")];
                 }
 
                 Vec::new()
             }
-            CompilerFlags::Encoding { encoding } => vec![String::from("--encoding"), encoding.to_string()],
+            CompilerFlags::Encoding { encoding } => {
+                vec![String::from("--encoding"), encoding.to_string()]
+            }
         }
     }
 }

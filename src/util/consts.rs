@@ -1,7 +1,6 @@
 use std::env::consts;
 
-pub const USAGE_TEXT: &str = 
-r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | warranty | license> 
+pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | warranty | license> 
     (tasks...)
         Runs the specified tasks, in order, and at least one task must be given
 
@@ -28,16 +27,16 @@ Flags:
     --project <project file>
         Uses a specific project file"#;
 
-pub fn java_seperator() -> char
-{
-    match consts::OS
-    {
+pub fn java_seperator() -> char {
+    match consts::OS {
         "windows" => ';',
-        _ => ':'
+        _ => ':',
     }
 }
 
-pub fn print_action_header(message: &str, action: u32, total: u32)
-{
-    println!("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-<( {:^19} <{:>2}/{:<2}> )>-=-=-=-=-=-=-=-=-=-=-=-=-=-=-", message, action, total);
+pub fn print_action_header(message: &str, action: u32, total: u32) {
+    println!(
+        "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-<( {:^19} <{:>2}/{:<2}> )>-=-=-=-=-=-=-=-=-=-=-=-=-=-=-",
+        message, action, total
+    );
 }

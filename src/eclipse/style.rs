@@ -1,59 +1,66 @@
 #![allow(dead_code)]
-pub enum StyleSetting
-{
-    Number { value: u16 },
-    TabPolicy { policy: TabPolicy },
-    Boolean { value: bool },
-    BracePolicy { policy: BracePlacement },
-    ParenthesisPlacement { policy: ParenthesisPlacement },
-    WrappingPolicy { setting: WrappingSetting, force_split: bool, indent: IndentPolicy }
+pub enum StyleSetting {
+    Number {
+        value: u16,
+    },
+    TabPolicy {
+        policy: TabPolicy,
+    },
+    Boolean {
+        value: bool,
+    },
+    BracePolicy {
+        policy: BracePlacement,
+    },
+    ParenthesisPlacement {
+        policy: ParenthesisPlacement,
+    },
+    WrappingPolicy {
+        setting: WrappingSetting,
+        force_split: bool,
+        indent: IndentPolicy,
+    },
 }
 
-pub enum TabPolicy 
-{
+pub enum TabPolicy {
     TabsOnly,
     SpacesOnly,
-    Mixed
+    Mixed,
 }
 
-pub enum BracePlacement
-{
+pub enum BracePlacement {
     SameLine,
     NextLine,
     NextLineIndented,
-    NextLineOnWrap
+    NextLineOnWrap,
 }
 
-pub enum ParenthesisPlacement
-{
+pub enum ParenthesisPlacement {
     SameLine,
     SeparateLine,
     SeparateLineIfNotEmpty,
     SeparateLineIfWrapped,
-    PreservePosition
+    PreservePosition,
 }
 
-pub enum BracedCodeInline
-{
+pub enum BracedCodeInline {
     IfEmpty,
     Never,
     AtMostOne,
     IfFits,
-    Preserve
+    Preserve,
 }
 
-pub enum WrappingSetting
-{
+pub enum WrappingSetting {
     DoNotWrap,
     IfNecessary,
     AlwaysFirstOthersIfNecessary,
     AllIndentAllButFirst,
-    AllIndentFirstIfNecessary
+    AllIndentFirstIfNecessary,
 }
 
-pub enum IndentPolicy
-{
+pub enum IndentPolicy {
     Default,
     ByOne,
-    OnColumn
+    OnColumn,
 }

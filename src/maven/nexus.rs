@@ -4,109 +4,92 @@ use serde::Deserialize;
 // XML decoding stuff
 //
 #[derive(Deserialize)]
-pub struct MavenMetadata
-{
-    versioning: MavenVersionsContainer
+pub struct MavenMetadata {
+    versioning: MavenVersionsContainer,
 }
 
 #[derive(Deserialize)]
-struct MavenVersionsContainer
-{
+#[allow(unused)]
+struct MavenVersionsContainer {
     latest: Option<String>,
     release: Option<String>,
-    versions: MavenVersionsList
+    versions: MavenVersionsList,
 }
 
 #[derive(Deserialize)]
-struct MavenVersionsList
-{
-    version: Vec<String>
+struct MavenVersionsList {
+    version: Vec<String>,
 }
 
 #[derive(Deserialize)]
-pub struct VersionSnapshot
-{
+#[allow(unused)]
+pub struct VersionSnapshot {
     classifier: Option<String>,
     extension: String,
-    value: String
+    value: String,
 }
 
 #[derive(Deserialize)]
-pub struct SnapshotMetadata
-{
-    versioning: SnapshotVersionContainer
+pub struct SnapshotMetadata {
+    versioning: SnapshotVersionContainer,
 }
 
 #[derive(Deserialize)]
-struct SnapshotVersionContainer
-{
-    snapshotVersions: SnapshotVersionList,
+struct SnapshotVersionContainer {
+    #[serde(rename = "snapshotVersions")]
+    snapshot_versions: SnapshotVersionList,
 }
 
 #[derive(Deserialize)]
-struct SnapshotVersionList
-{
-    snapshotVersion: Vec<SnapshotVersion>
+struct SnapshotVersionList {
+    #[serde(rename = "snapshotVersions")]
+    snapshot_version: Vec<SnapshotVersion>,
 }
 
 #[derive(Deserialize)]
-pub struct SnapshotVersion 
-{
+pub struct SnapshotVersion {
     classifier: Option<String>,
     extension: String,
-    value: String
+    value: String,
 }
 
-impl MavenMetadata
-{
-    pub fn latest(&self) -> Option<&String>
-    {
+#[allow(unused)]
+impl MavenMetadata {
+    pub fn latest(&self) -> Option<&String> {
         self.versioning.latest.as_ref()
     }
 
-    pub fn release(&self) -> Option<&String>
-    {
+    pub fn release(&self) -> Option<&String> {
         self.versioning.release.as_ref()
     }
 
-    pub fn versions(&self) -> &[String]
-    {
+    pub fn versions(&self) -> &[String] {
         self.versioning.versions.version.as_ref()
     }
 }
 
-impl SnapshotMetadata
-{
-    pub fn from_classifier(&self, classifier: Option<&String>) -> Option<String>
-    {
-        if classifier.is_none()
-        {
+impl SnapshotMetadata {
+    pub fn take_classifier(&self, classifier: Option<&String>) -> Option<String> {
+        if classifier.is_none() {
             // Locate the plain jar
-            for snapshot in &self.versioning.snapshotVersions.snapshotVersion
-            {
-                if snapshot.classifier.is_none() && snapshot.extension == "jar"
-                {
-                    return Some(snapshot.value.clone())
+            for snapshot in &self.versioning.snapshot_versions.snapshot_version {
+                if snapshot.classifier.is_none() && snapshot.extension == "jar" {
+                    return Some(snapshot.value.clone());
                 }
             }
 
-            return None
+            return None;
         }
 
-        if let Some(classifier) = classifier
-        {
-            for snapshot in &self.versioning.snapshotVersions.snapshotVersion
-            {
-                if snapshot.extension != "jar"
-                {
-                    continue
+        if let Some(classifier) = classifier {
+            for snapshot in &self.versioning.snapshot_versions.snapshot_version {
+                if snapshot.extension != "jar" {
+                    continue;
                 }
 
-                if let Some(artifact_classifier) = &snapshot.classifier
-                {
-                    if classifier == artifact_classifier
-                    {
-                        return Some(snapshot.value.clone())
+                if let Some(artifact_classifier) = &snapshot.classifier {
+                    if classifier == artifact_classifier {
+                        return Some(snapshot.value.clone());
                     }
                 }
             }
