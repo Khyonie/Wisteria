@@ -1,16 +1,23 @@
-# Wisteria🌻
-Wisteria is a Java project manager and builder for Linux CLI-only environments, such as SSH sessions. Inspired by Rust-lang's Cargo package manager.
+# Wisteria
+Wisteria is a Java project manager and builder for Linux CLI-only environments, such as SSH sessions. Inspired by Rust-lang's Cargo project manager.
 
 For example:
 ```toml
-[project] 
+# Your basic project information, such as the name, current version,
+# description, and what environments your project should be compatible
+# with.
+[project]
 name = "WisteriaProject"
 version = "0.1.0"
 description = "An example of a project file."
 natures = [ "eclipse", "maven" ] 
 
+# Dependencies to be made available to configurations.
 [dependencies]
 
+# Configurations define where to find source files, what dependencies to
+# include, where to write completed builds, among other options.
+# See the more in-depth configuration section for details.
 [configuration.main]
 sources = [ "src/" ]
 dependencies = [  ] 
@@ -18,26 +25,26 @@ targets = [ "targets/{configuration}/{project_name}-{configuration}-{version}.ja
 ```
 
 ## Usage:
-### 🌟 Create a new project
+### Create a new project
 `-$ wisteria3 create <your project name>` 
 
 Creates a folder in the current directory to contain the new project, with a source folder and a `project.toml` file.
 
 Optionally, add the `--minimal` flag to create the project using a minimal `project.toml`.
 
-### 📦 Build the current project configuration
+### Build the current project configuration
 `-$ wisteria3 build`
 
 Compiles all .java source files inside the source folder(s) defined in the current project configuration, and packages them as a .jar file defined by the `targets` section of the current project configuration.
 
 For a configuration to be valid for building, it must define `sources` and `targets`. Additionally if `entry` is specified, the resulting .jar file will be executable.
 
-### 🔄 Switch the project configuration
+### Switch the project configuration
 `-$ wisteria3 switch <configuration>`
 
 Switches the project configuration to a different configuration defined in `project.toml`, and refreshes the workspace. See below for more details.
 
-### ✨ Apply project settings to the workspace
+### Apply project settings to the workspace
 `-$ wisteria3 refresh`
 
 The current `project.toml` settings will apply to the project workspace by generating files based on the natures in `project.natures`. Useful to apply changes to the workspace without switching the current project configuration.
@@ -46,7 +53,7 @@ The current `project.toml` settings will apply to the project workspace by gener
 
 Applicable dependencies may be updated with this action as well.
 
-### 📥 Update dependencies
+### Update dependencies
 `-$ wisteria3 update [dependency | all]`
 
 Downloads a specific Maven or Github dependency as defined in the `[dependencies]` section of `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
