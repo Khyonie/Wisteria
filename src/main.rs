@@ -18,19 +18,7 @@ use util::{
     toml_utils::{read_boolean, read_string},
 };
 
-mod compiler;
-mod configuration;
-mod dependency;
-mod eclipse;
-mod java;
-mod maven;
-mod nature;
-mod project;
-mod task;
-mod template;
-mod util;
-
-pub const VERSION: &str = "3.3.0";
+mod app;
 
 fn main() {
     // Load project

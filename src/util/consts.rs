@@ -1,5 +1,7 @@
 use std::env::consts;
 
+pub const VERSION: &str = "3.3.0";
+
 pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | warranty | license> 
     (tasks...)
         Runs the specified tasks, in order, and at least one task must be given
