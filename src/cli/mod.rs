@@ -1,0 +1,37 @@
+use std::process::exit;
+
+use crate::model::Project;
+
+pub mod args;
+pub mod commands;
+
+pub fn run() {
+    let mut args: Vec<String> = Vec::new();
+    let flags = args::load_arguments(&mut args);
+    let project: Result<Project, (String, u8)> = Project::from(flags.use_project.clone());
+
+    match args[1].to_lowercase().as_str() {
+        "refresh" => commands::refresh::trigger_refresh(project),
+        "update" if args.len() == 2 => {
+            println!(
+                "Not enough arguments. Expected at least one argument, but none were supplied."
+            );
+            exit(1)
+        }
+        "update" => commands::update::trigger_update(project, &args),
+        "clean" if args.len() == 2 => {
+            println!("Not enough arguments. Expected one of [ classes, dependencies, all ], but nothing was supplied.");
+            exit(1)
+        }
+        "clean" => commands::clean::trigger_clean(&args),
+        "new" | "create" if args.len() == 2 => exit(1),
+        "new" | "create" => commands::create::trigger_create(&args, &flags),
+        "info" => commands::info::trigger_info(project),
+        "switch" if args.len() == 2 => {
+            println!("Not enough arguments. Expected a configuration name.");
+            exit(1)
+        }
+        "switch" => commands::switch::trigger_switch(project, &args, &flags),
+        _ => commands::task::trigger_task(project, &args),
+    }
+}
