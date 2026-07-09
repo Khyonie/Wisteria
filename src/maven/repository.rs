@@ -1,7 +1,7 @@
 use reqwest::blocking::Client;
 use serde_xml_rs::from_str;
 
-use crate::maven::nexus::{MavenMetadata, SnapshotMetadata};
+use crate::maven::metadata::{MavenMetadata, SnapshotMetadata};
 
 const MAVEN_METADATA_FILE: &str = "maven-metadata.xml";
 
