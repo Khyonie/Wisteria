@@ -1,6 +1,6 @@
 use std::env::consts;
 
-pub const VERSION: &str = "3.3.0";
+pub const VERSION: &str = "3.3.2";
 
 pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | warranty | license> 
     (tasks...)

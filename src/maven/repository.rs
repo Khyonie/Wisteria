@@ -102,7 +102,7 @@ pub fn get_artifact(
         url_postfix = "/";
     }
 
-    let target_value = match snapshot_metadata.take_classifier(classifier) {
+    let target_value = match snapshot_metadata.take_classifier(classifier, &target_version) {
         Some(v) => v,
         None => {
             return Err(format!(
@@ -184,14 +184,8 @@ pub fn get_version(
     let snapshot_metadata: SnapshotMetadata =
         from_str(&snapshot_text).map_err(|e| format!("Could not decode snapshot metadata: {e}"))?;
 
-    println!(
-        "{target_version}, {:?}",
-        snapshot_metadata.take_classifier(classifier)
-    );
-    Ok((
-        target_version,
-        snapshot_metadata.take_classifier(classifier),
-    ))
+    let snapshot_value = snapshot_metadata.take_classifier(classifier, &target_version);
+    Ok((target_version, snapshot_value))
 }
 
 fn get_text_at_url(url: &str, client: &Client) -> Result<String, String> {
