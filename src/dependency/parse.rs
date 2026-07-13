@@ -3,6 +3,37 @@ use toml::Table;
 use crate::config::toml_utils;
 use crate::dependency::{Dependency, GithubReleaseType, UpdatePolicy};
 
+fn read_github_repository(toml: &Table) -> Result<(String, String), (String, u8)> {
+    let repository = toml_utils::read_string("repository", toml)?;
+
+    match toml_utils::read_string("username", toml) {
+        Ok(username) => Ok((username, repository)),
+        Err((_, 10)) => split_github_repository(&repository),
+        Err(error) => Err(error),
+    }
+}
+
+fn split_github_repository(value: &str) -> Result<(String, String), (String, u8)> {
+    let Some((username, repository)) = value.split_once('/') else {
+        return Err(invalid_github_repository(value));
+    };
+
+    if username.is_empty() || repository.is_empty() || repository.contains('/') {
+        return Err(invalid_github_repository(value));
+    }
+
+    Ok((username.to_string(), repository.to_string()))
+}
+
+fn invalid_github_repository(value: &str) -> (String, u8) {
+    (
+        format!(
+            "Invalid GitHub repository \"{value}\": expected \"Username/Repository\" when username is omitted"
+        ),
+        10,
+    )
+}
+
 impl Dependency {
     pub fn load(toml: &Table) -> Result<Dependency, (String, u8)> {
         match toml.get("type") {
@@ -71,21 +102,7 @@ impl Dependency {
                         })
                     }
                     "fetchFromGithub" => {
-                        let mut username: Option<String> = toml_utils::read_string("username", toml).ok();
-                        let mut repository: String = toml_utils::read_string("repository", toml)?;
-                        if username.is_none()
-                        {
-                            let split = match repository.split_once("/") {
-                                Some(v) => v,
-                                None => {
-                                    return Err((String::from("Invalid Github username/repository \"{repository}\""), 255))
-                                },
-                            };
-
-                            username = Some(String::from(split.0));
-                            repository = String::from(split.1);
-                        }
-                        let username = username.unwrap();
+                        let (username, repository) = read_github_repository(toml)?;
                         let tag: Option<String> = toml_utils::read_string("tag", toml).ok();
                         let release_type = GithubReleaseType::load(
                             &toml_utils::read_string("release_type", toml)
@@ -140,6 +157,13 @@ mod tests {
 
     fn load_dependency(toml: &str) -> Dependency {
         Dependency::load(&toml.parse::<Table>().unwrap()).unwrap()
+    }
+
+    fn load_dependency_error(toml: &str) -> (String, u8) {
+        match Dependency::load(&toml.parse::<Table>().unwrap()) {
+            Ok(_) => panic!("expected dependency load to fail"),
+            Err(error) => error,
+        }
     }
 
     #[test]
@@ -205,20 +229,64 @@ mod tests {
     }
 
     #[test]
+    fn github_dependency_accepts_owner_repository_shorthand() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromGithub"
+            repository = "Example/Library"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromGithub {
+                username,
+                repository,
+                asset,
+                ..
+            } => {
+                assert_eq!(username, "Example");
+                assert_eq!(repository, "Library");
+                assert_eq!(asset, "Library");
+            }
+            _ => panic!("expected GitHub dependency"),
+        }
+    }
+
+    #[test]
+    fn github_dependency_rejects_missing_owner() {
+        let error = load_dependency_error(
+            r#"
+            type = "fetchFromGithub"
+            repository = "Library"
+            "#,
+        );
+
+        assert!(error.0.contains("Username/Repository"));
+    }
+
+    #[test]
+    fn github_dependency_rejects_non_string_username() {
+        let error = load_dependency_error(
+            r#"
+            type = "fetchFromGithub"
+            username = true
+            repository = "Example/Library"
+            "#,
+        );
+
+        assert!(error.0.contains("Mismatched type for \"username\""));
+    }
+
+    #[test]
     fn github_dependency_rejects_invalid_release_type() {
-        let error = match Dependency::load(
-            &r#"
+        let error = load_dependency_error(
+            r#"
             type = "fetchFromGithub"
             username = "Example"
             repository = "Library"
             release_type = "nightly"
-            "#
-            .parse::<Table>()
-            .unwrap(),
-        ) {
-            Ok(_) => panic!("expected invalid release_type to fail"),
-            Err(error) => error,
-        };
+            "#,
+        );
 
         assert!(error.0.contains("Unexpected GitHub release type"));
     }

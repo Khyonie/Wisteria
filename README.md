@@ -86,13 +86,13 @@ maven-library = { type = "fetchFromMaven", group_id = "com.example", artifact_id
 
 # Downloads a release asset from a Github repository
 # If "tag" is not specified, the latest non-prerelease tag asset is downloaded
-github-library = { type = "fetchFromGithub", username = "Example", repository = "LibExample" }
+github-library = { type = "fetchFromGithub", repository = "Example/LibExample" }
 
 # Use a pinned release tag
-pinned-github-library = { type = "fetchFromGithub", username = "Example", repository = "LibExample", tag = "v1.2.3" }
+pinned-github-library = { type = "fetchFromGithub", repository = "Example/LibExample", tag = "v1.2.3" }
 
 # Or opt into prerelease tags when "tag" is omitted
-preview-github-library = { type = "fetchFromGithub", username = "Example", repository = "LibExample", release_type = "prerelease" }
+preview-github-library = { type = "fetchFromGithub", repository = "Example/LibExample", release_type = "prerelease" }
 ```
 
 ### `[configuration.<config>]`
