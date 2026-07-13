@@ -71,8 +71,21 @@ impl Dependency {
                         })
                     }
                     "fetchFromGithub" => {
-                        let username: String = toml_utils::read_string("username", toml)?;
-                        let repository: String = toml_utils::read_string("repository", toml)?;
+                        let mut username: Option<String> = toml_utils::read_string("username", toml).ok();
+                        let mut repository: String = toml_utils::read_string("repository", toml)?;
+                        if username.is_none()
+                        {
+                            let split = match repository.split_once("/") {
+                                Some(v) => v,
+                                None => {
+                                    return Err((String::from("Invalid Github username/repository \"{repository}\""), 255))
+                                },
+                            };
+
+                            username = Some(String::from(split.0));
+                            repository = String::from(split.1);
+                        }
+                        let username = username.unwrap();
                         let tag: Option<String> = toml_utils::read_string("tag", toml).ok();
                         let release_type = GithubReleaseType::load(
                             &toml_utils::read_string("release_type", toml)

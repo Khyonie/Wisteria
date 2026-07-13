@@ -55,7 +55,6 @@ pub fn generate_classpath(
         width += 5;
         let size = dependencies.len();
 
-        println!("Dependencies: [{:?}]", &dependencies);
         for (index, d) in dependencies.iter().enumerate() {
             print!(
                 "({}/{size}) Resolving {:width$}",
