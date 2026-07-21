@@ -87,6 +87,11 @@ impl Nature {
                         return Err(format!("{e}"))
                     }
                 }
+                if let Err(e) = remove_file(".settings/org.eclipse.m2e.core.prefs") {
+                    if e.kind() != ErrorKind::NotFound {
+                        return Err(format!("{e}"))
+                    }
+                }
             }
         }
 

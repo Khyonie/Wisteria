@@ -71,8 +71,16 @@ impl Dependency {
                         })
                     }
                     "fetchFromGithub" => {
-                        let username: String = toml_utils::read_string("username", toml)?;
                         let repository: String = toml_utils::read_string("repository", toml)?;
+                        let username = match toml_utils::read_string("username", toml) {
+                            Ok(username) => Some(username),
+                            Err(_) if !toml.contains_key("username") => None,
+                            Err(e) => return Err(e),
+                        };
+                        let (username, repository) = github_owner_and_repository(
+                            username,
+                            repository,
+                        )?;
                         let tag: Option<String> = toml_utils::read_string("tag", toml).ok();
                         let release_type = GithubReleaseType::load(
                             &toml_utils::read_string("release_type", toml)
@@ -119,6 +127,31 @@ impl Dependency {
             )),
         }
     }
+}
+
+fn github_owner_and_repository(
+    username: Option<String>,
+    repository: String,
+) -> Result<(String, String), (String, u8)> {
+    if let Some(username) = username {
+        return Ok((username, repository));
+    }
+
+    let Some((username, repository)) = repository.split_once('/') else {
+        return Err((
+            String::from("Missing key username and repository is not in owner/repository form"),
+            10,
+        ));
+    };
+
+    if username.is_empty() || repository.is_empty() || repository.contains('/') {
+        return Err((
+            String::from("GitHub repository shorthand must be in owner/repository form"),
+            10,
+        ));
+    }
+
+    Ok((username.to_string(), repository.to_string()))
 }
 
 #[cfg(test)]
@@ -170,6 +203,82 @@ mod tests {
             }
             _ => panic!("expected GitHub dependency"),
         }
+    }
+
+    #[test]
+    fn github_dependency_accepts_repository_shorthand() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromGithub"
+            repository = "Example/Library"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromGithub {
+                username,
+                repository,
+                asset,
+                ..
+            } => {
+                assert_eq!(username, "Example");
+                assert_eq!(repository, "Library");
+                assert_eq!(asset, "Library");
+            }
+            _ => panic!("expected GitHub dependency"),
+        }
+    }
+
+    #[test]
+    fn github_dependency_requires_username_or_repository_shorthand() {
+        let error = match Dependency::load(
+            &r#"
+            type = "fetchFromGithub"
+            repository = "Library"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected missing username to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Missing key username"));
+    }
+
+    #[test]
+    fn github_dependency_rejects_invalid_repository_shorthand() {
+        let error = match Dependency::load(
+            &r#"
+            type = "fetchFromGithub"
+            repository = "Example/Org/Library"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected invalid repository shorthand to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("owner/repository"));
+    }
+
+    #[test]
+    fn github_dependency_rejects_malformed_username_with_repository_shorthand() {
+        let error = match Dependency::load(
+            &r#"
+            type = "fetchFromGithub"
+            username = 10
+            repository = "Example/Library"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected malformed username to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Mismatched type for \"username\""));
     }
 
     #[test]
