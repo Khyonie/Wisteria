@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fs::{create_dir, remove_dir_all, remove_file, write},
+    fs::{create_dir_all, remove_dir_all, remove_file, write}, io::ErrorKind,
 };
 
 use regex::Regex;
@@ -23,35 +23,40 @@ impl Nature {
         project: &Project,
         configuration: &Configuration,
         regexes: &HashMap<&str, Regex>,
-    ) {
+    ) -> Result<(), String> {
         match self {
             Nature::Eclipse => {
-                let _ = create_dir(".settings/");
-                let _ = write(
+                create_dir_all(".settings/").map_err(| e | format!("{e}"))?;
+                write(
                     ".settings/org.eclipse.jdt.core.prefs",
                     eq_sep_config::generate_config(eclipse::generate_eclipse_config(configuration)),
-                );
-                let _ = write(
+                ).map_err(| e | format!("{e}"))?;
+                write(
                     ".settings/org.eclipse.m2e.core.prefs",
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
-                );
-                let _ = write(".project", eclipse::generate_project(project).unwrap());
+                ).map_err(| e | format!("{e}"))?;
 
-                let _ = write(
+                write(".project", eclipse::generate_project(project)?).map_err(| e | format!("{e}"))?;
+
+                write(
                     ".classpath",
-                    eclipse::generate_classpath(project, configuration, regexes).unwrap(),
-                );
+                    eclipse::generate_classpath(project, configuration, regexes)?,
+                ).map_err(| e | format!("{e}"))?;
+
+                Ok(())
             }
             Nature::Maven => {
-                let _ = create_dir(".settings/");
-                let _ = write(
+                create_dir_all(".settings/").map_err(| e | format!("{e}"))?;
+                write(
                     ".settings/org.eclipse.m2e.core.prefs",
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
-                );
-                let _ = write(
+                ).map_err(| e | format!("{e}"))?;
+                write(
                     "pom.xml",
                     maven::generate_pom(project, configuration).unwrap(),
-                );
+                ).map_err(| e | format!("{e}"))?;
+
+                Ok(())
             }
         }
     }
@@ -59,11 +64,30 @@ impl Nature {
     pub fn remove_nature(&self) -> Result<(), String> {
         match self {
             Self::Eclipse => {
-                remove_dir_all(".settings").map_err(|e| format!("{e}"))?;
-                remove_file(".classpath").map_err(|e| format!("{e}"))?;
-                remove_file(".project").map_err(|e| format!("{e}"))?;
+                 if let Err(e) = remove_dir_all(".settings") {
+                    if e.kind() != ErrorKind::NotFound {
+                        return Err(format!("{e}"))
+                    }
+                }
+                if let Err(e) = remove_file(".classpath") {
+                    if e.kind() != ErrorKind::NotFound {
+                        return Err(format!("{e}"))
+                    }
+                }
+
+                if let Err(e) = remove_file(".project") {
+                    if e.kind() != ErrorKind::NotFound {
+                        return Err(format!("{e}"))
+                    }
+                }
             }
-            Self::Maven => remove_file("pom.xml").map_err(|e| format!("{e}"))?,
+            Self::Maven => {
+                if let Err(e) = remove_file("pom.xml") {
+                    if e.kind() != ErrorKind::NotFound {
+                        return Err(format!("{e}"))
+                    }
+                }
+            }
         }
 
         Ok(())

@@ -48,7 +48,12 @@ pub fn trigger_switch(
 
     let regexes = envvar_regexes();
     if !flags.no_refresh {
-        refresh(&project, configuration, &regexes);
+        if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        {
+            println!("Failed to refresh nature {}: {error}", nature.type_str());
+            println!("Project might be in a degraded state.");
+            exit(1)
+        }
     }
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();

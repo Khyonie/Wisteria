@@ -32,6 +32,7 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
         .get(&metadata.configuration)
         .unwrap();
     let regexes = envvar_regexes();
+    let mut refresh_failed = false;
 
     if args[2] == "all" {
         let keys: Vec<String> = project.dependencies().keys().cloned().collect();
@@ -45,7 +46,11 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
         );
 
         if !flags.no_refresh {
-            refresh(&project, configuration, &regexes);
+            if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+            {
+                println!("Failed to refresh nature {}: {error}", nature.type_str());
+                refresh_failed = true
+            }
         }
 
         if !failed.is_empty() {
@@ -54,6 +59,12 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
                 println!("\t{name}: {reason}");
             }
 
+            exit(1)
+        }
+
+        if refresh_failed
+        {
+            println!("Dependencies updated, however project might be in a degraded state.");
             exit(1)
         }
 
@@ -81,7 +92,11 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
     );
 
     if !flags.no_refresh {
-        refresh(&project, configuration, &regexes);
+        if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        {
+            println!("Failed to refresh nature {}: {error}", nature.type_str());
+            refresh_failed = true
+        }
     }
 
     if !failed.is_empty() {
@@ -90,6 +105,11 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
             println!("\t{name}: {reason}");
         }
 
+        exit(1)
+    }
+    if refresh_failed
+    {
+        println!("Dependency updated, however project might be in a degraded state.");
         exit(1)
     }
 

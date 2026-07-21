@@ -39,7 +39,12 @@ pub fn trigger_refresh(project: Result<Project, (String, u8)>) {
         .unwrap();
     let regexes = envvar_regexes();
 
-    refresh(&project, &configuration, &regexes);
+    if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+    {
+        println!("Failed to refresh nature {}: {error}", nature.type_str());
+        println!("Project might be in a degraded state.");
+        exit(1)
+    }
 
     println!("Operation complete!");
 }
