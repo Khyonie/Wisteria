@@ -53,7 +53,7 @@ impl Nature {
                 ).map_err(| e | format!("{e}"))?;
                 write(
                     "pom.xml",
-                    maven::generate_pom(project, configuration).unwrap(),
+                    maven::generate_pom(project, configuration)?,
                 ).map_err(| e | format!("{e}"))?;
 
                 Ok(())
