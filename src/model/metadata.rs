@@ -10,6 +10,13 @@ pub struct Metadata {
     pub configuration: String,
 }
 
+impl Default for Metadata
+{
+    fn default() -> Self {
+        Self { dirty: false, configuration: String::from("main") }
+    }
+}
+
 impl Metadata {
     pub fn load() -> Result<Self, (String, u8)> {
         let toml_string =

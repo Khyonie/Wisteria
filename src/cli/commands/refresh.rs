@@ -2,10 +2,9 @@ use std::process::exit;
 
 use crate::cli::commands::{envvar_regexes, print_header};
 use crate::model::{Metadata, Project};
-use crate::util::consts::print_action_header;
-use crate::workspace::nature::Nature;
+use crate::workspace::refresh::refresh;
 
-/// `wisteria3 refresh`
+/// `wisteria refresh`
 pub fn trigger_refresh(project: Result<Project, (String, u8)>) {
     let project: Project = match project {
         Ok(p) => p,
@@ -40,20 +39,7 @@ pub fn trigger_refresh(project: Result<Project, (String, u8)>) {
         .unwrap();
     let regexes = envvar_regexes();
 
-    print_action_header("Removing natures", 1, 2);
-    for nature in Nature::values() {
-        print!("> Removing project nature \"{}\" ... ", nature.type_str());
-        let _ = nature.remove_nature();
-        println!("Done!");
-    }
-    println!("Natures removed!");
-
-    print_action_header("Applying natures", 2, 2);
-    for nature in project.info().natures() {
-        println!("> Applying project nature \"{}\"... ", nature.type_str());
-        nature.setup_nature(&project, configuration, &regexes);
-        println!("Done!");
-    }
+    refresh(&project, &configuration, &regexes);
 
     println!("Operation complete!");
 }

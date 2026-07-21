@@ -35,7 +35,7 @@ impl CompilerFlags {
                         match i.try_into()
                         {
                             Ok(version) => Ok(Self::ReleaseTarget { version }),
-                            Err(_) => Err((format!("Java version out of range, expected a number between 255, found {i}"), 52))
+                            Err(_) => Err((format!("Java version out of range, expected a number between 1 and 255, found {i}"), 52))
                         }
                     }
                     None => Err((format!("Mismatched type for compiler flag \"release_target\", expected an integer, found {}", value.type_str()), 14))

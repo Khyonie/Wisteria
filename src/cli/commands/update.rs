@@ -1,10 +1,12 @@
 use std::process::exit;
 
+use crate::cli::args::StartupFlags;
 use crate::cli::commands::{envvar_regexes, update_dependencies_with_context};
 use crate::dependency::UpdateContext;
 use crate::model::{Metadata, Project};
+use crate::workspace::refresh::refresh;
 
-pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
+pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], flags: &StartupFlags) {
     let project: Project = match project {
         Ok(p) => p,
         Err(e) => {
@@ -42,6 +44,10 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
             UpdateContext::Update,
         );
 
+        if !flags.no_refresh {
+            refresh(&project, configuration, &regexes);
+        }
+
         if !failed.is_empty() {
             println!("Failed to resolve one or more dependencies:");
             for (name, reason) in &failed {
@@ -73,6 +79,10 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
         &regexes,
         UpdateContext::Update,
     );
+
+    if !flags.no_refresh {
+        refresh(&project, configuration, &regexes);
+    }
 
     if !failed.is_empty() {
         println!("Failed to resolve one or more dependencies:");

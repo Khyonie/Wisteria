@@ -1,3 +1,3 @@
 fn main() {
-    wisteria3::cli::run();
+    wisteria::cli::run();
 }

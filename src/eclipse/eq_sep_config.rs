@@ -12,6 +12,7 @@ pub fn generate_config(config: EclipseConfiguration) -> String {
     data
 }
 
+#[allow(clippy::new_without_default)]
 pub struct EclipseConfiguration {
     data: HashMap<String, String>,
     prefix: String,

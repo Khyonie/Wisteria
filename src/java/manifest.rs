@@ -1,3 +1,4 @@
+#[allow(clippy::new_without_default)]
 pub struct Manifest {
     entries: Vec<ManifestEntry>,
 }

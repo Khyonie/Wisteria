@@ -25,7 +25,6 @@ pub struct Configuration {
     tasks: HashMap<String, Rc<dyn TaskRunner>>,
     compiler_flags: Option<Vec<CompilerFlags>>,
     environment: HashMap<String, String>,
-    natures: Vec<String>,
     inherit: Option<String>,
 }
 
@@ -112,15 +111,6 @@ impl Configuration {
             None => {}
         }
 
-        let mut natures: Vec<String> = Vec::new();
-        if let Ok(mut n) = toml_utils::read_string_array("natures", toml) {
-            natures.append(&mut n);
-        }
-
-        if !natures.contains(&String::from("wisteria")) {
-            natures.insert(0, String::from("wisteria"));
-        }
-
         let compiler_flags: Option<Vec<CompilerFlags>> = match toml.get("compiler_flags") {
             Some(t) if t.is_table() => {
                 let t = t.as_table().unwrap();
@@ -156,7 +146,6 @@ impl Configuration {
             tasks,
             compiler_flags,
             environment,
-            natures,
             inherit,
         })
     }
