@@ -109,3 +109,108 @@ impl Nature {
         vec![Nature::Eclipse, Nature::Maven]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{with_current_dir, TempDir};
+    use std::fs;
+
+    fn regexes() -> HashMap<&'static str, Regex> {
+        let mut regexes = HashMap::new();
+        regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
+        regexes
+    }
+
+    fn project_from_toml(temp: &TempDir, contents: &str) -> Project {
+        let project_file = temp.path().join("project.toml");
+        fs::write(&project_file, contents).unwrap();
+
+        Project::from(Some(project_file.to_string_lossy().to_string())).unwrap()
+    }
+
+    #[test]
+    fn remove_nature_ignores_missing_generated_files() {
+        let temp = TempDir::new("nature-remove-missing");
+
+        with_current_dir(temp.path(), || {
+            Nature::Eclipse.remove_nature().unwrap();
+            Nature::Maven.remove_nature().unwrap();
+        });
+    }
+
+    #[test]
+    fn remove_maven_nature_removes_pom_and_maven_settings_file() {
+        let temp = TempDir::new("nature-remove-maven");
+        fs::create_dir_all(temp.path().join(".settings")).unwrap();
+        fs::write(temp.path().join("pom.xml"), "").unwrap();
+        fs::write(temp.path().join(".settings/org.eclipse.m2e.core.prefs"), "").unwrap();
+
+        with_current_dir(temp.path(), || {
+            Nature::Maven.remove_nature().unwrap();
+        });
+
+        assert!(!temp.path().join("pom.xml").exists());
+        assert!(!temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+    }
+
+    #[test]
+    fn setup_eclipse_nature_writes_expected_workspace_files() {
+        let temp = TempDir::new("nature-setup-eclipse");
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+            natures = [ "eclipse" ]
+
+            [configuration.main]
+            sources = [ "src/" ]
+            dependencies = [ ]
+            targets = [ "target/demo.jar" ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        with_current_dir(temp.path(), || {
+            Nature::Eclipse
+                .setup_nature(&project, configuration, &regexes())
+                .unwrap();
+        });
+
+        assert!(temp.path().join(".project").exists());
+        assert!(temp.path().join(".classpath").exists());
+        assert!(temp.path().join(".settings/org.eclipse.jdt.core.prefs").exists());
+        assert!(temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+    }
+
+    #[test]
+    fn setup_maven_nature_writes_pom_and_settings() {
+        let temp = TempDir::new("nature-setup-maven");
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+            natures = [ "maven" ]
+
+            [configuration.main]
+            dependencies = [ ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        with_current_dir(temp.path(), || {
+            Nature::Maven
+                .setup_nature(&project, configuration, &regexes())
+                .unwrap();
+        });
+
+        assert!(temp.path().join("pom.xml").exists());
+        assert!(temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+    }
+}

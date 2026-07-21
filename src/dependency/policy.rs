@@ -77,3 +77,76 @@ impl UpdatePolicy {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loads_all_known_update_policies() {
+        assert!(matches!(UpdatePolicy::load("Always").unwrap(), UpdatePolicy::Always));
+        assert!(matches!(
+            UpdatePolicy::load("SwitchOrUpdate").unwrap(),
+            UpdatePolicy::SwitchOrUpdate
+        ));
+        assert!(matches!(
+            UpdatePolicy::load("UpdateOnly").unwrap(),
+            UpdatePolicy::UpdateOnly
+        ));
+        assert!(matches!(
+            UpdatePolicy::load("SwitchOrTask").unwrap(),
+            UpdatePolicy::SwitchOrTask
+        ));
+        assert!(matches!(
+            UpdatePolicy::load("SwitchConfigurationOnly").unwrap(),
+            UpdatePolicy::SwitchConfigurationOnly
+        ));
+        assert!(matches!(
+            UpdatePolicy::load("TaskOrUpdate").unwrap(),
+            UpdatePolicy::TaskOrUpdate
+        ));
+        assert!(matches!(
+            UpdatePolicy::load("TaskInvokedOnly").unwrap(),
+            UpdatePolicy::TaskInvokedOnly
+        ));
+        assert!(matches!(UpdatePolicy::load("Never").unwrap(), UpdatePolicy::Never));
+    }
+
+    #[test]
+    fn rejects_unknown_update_policy() {
+        let error = match UpdatePolicy::load("Sometimes") {
+            Ok(_) => panic!("expected unknown update policy to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Unexpected update policy"));
+        assert_eq!(error.1, 30);
+    }
+
+    #[test]
+    fn update_policy_matches_expected_context_matrix() {
+        let contexts = [
+            UpdateContext::Update,
+            UpdateContext::SwitchConfiguration,
+            UpdateContext::TaskInvoked,
+            UpdateContext::ResolveOnly,
+        ];
+
+        let cases = [
+            (UpdatePolicy::Always, [true, true, true, true]),
+            (UpdatePolicy::SwitchOrUpdate, [true, true, false, false]),
+            (UpdatePolicy::UpdateOnly, [true, false, false, false]),
+            (UpdatePolicy::SwitchOrTask, [false, true, true, false]),
+            (UpdatePolicy::SwitchConfigurationOnly, [false, true, false, false]),
+            (UpdatePolicy::TaskOrUpdate, [true, false, true, false]),
+            (UpdatePolicy::TaskInvokedOnly, [false, false, true, false]),
+            (UpdatePolicy::Never, [false, false, false, false]),
+        ];
+
+        for (policy, expected) in cases {
+            for (context, expected) in contexts.iter().zip(expected) {
+                assert_eq!(policy.should_update(context), expected);
+            }
+        }
+    }
+}

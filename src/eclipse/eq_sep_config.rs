@@ -46,3 +46,34 @@ impl EclipseConfiguration {
         self.data
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builder_tracks_prefix_and_keys() {
+        let config = EclipseConfiguration::new()
+            .prefix("org.example.")
+            .add_key("enabled", "true");
+
+        assert_eq!(config.get_prefix(), "org.example.");
+        assert_eq!(
+            config.deconstruct().get("enabled").map(String::as_str),
+            Some("true")
+        );
+    }
+
+    #[test]
+    fn generate_config_applies_prefix_to_each_key() {
+        let output = generate_config(
+            EclipseConfiguration::new()
+                .prefix("org.example.")
+                .add_key("enabled", "true")
+                .add_key("version", "1"),
+        );
+
+        assert!(output.contains("org.example.enabled=true\n"));
+        assert!(output.contains("org.example.version=1\n"));
+    }
+}
