@@ -42,3 +42,29 @@ pub fn generate_wisteria_project(name: &str, minimal: bool) -> String {
 
     PROJECT_TOML_TEMPLATE.replace("{PROJECT_NAME}", name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generates_default_project_template_with_project_name() {
+        let project = generate_wisteria_project("Demo", false);
+
+        assert!(project.contains("name = \"Demo\""));
+        assert!(project.contains("natures = [ \"eclipse\", \"maven\" ]"));
+        assert!(project.contains("[configuration.main]"));
+        assert!(project.contains("targets = [ \"targets/{configuration}/{project_name}-{version}.jar\" ]"));
+    }
+
+    #[test]
+    fn generates_minimal_project_template_with_empty_config_lists() {
+        let project = generate_wisteria_project("Demo", true);
+
+        assert!(project.contains("name = \"Demo\""));
+        assert!(project.contains("sources = [ ]"));
+        assert!(project.contains("dependencies = [ ]"));
+        assert!(project.contains("targets = [ ]"));
+        assert!(!project.contains("Add your project's required dependencies here"));
+    }
+}

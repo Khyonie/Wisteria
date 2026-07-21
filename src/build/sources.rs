@@ -56,3 +56,58 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{with_current_dir, TempDir};
+    use std::fs;
+    use toml::Table;
+
+    fn configuration(toml: &str) -> Configuration {
+        Configuration::from(
+            String::from("main"),
+            &toml.parse::<Table>().unwrap(),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn collect_sources_copies_java_files_to_work_directory() {
+        let temp = TempDir::new("collect-sources");
+        let source = temp.path().join("src");
+        fs::create_dir_all(source.join("nested")).unwrap();
+        fs::write(source.join("Main.java"), "class Main {}").unwrap();
+        fs::write(source.join("nested/Other.java"), "class Other {}").unwrap();
+        fs::write(source.join("notes.txt"), "ignore me").unwrap();
+
+        with_current_dir(temp.path(), || {
+            let configuration = configuration(&format!(
+                r#"
+                sources = [ "{}" ]
+                "#,
+                source.to_string_lossy()
+            ));
+
+            let mut copied = collect_sources(&configuration).unwrap();
+            copied.sort();
+
+            assert_eq!(copied.len(), 2);
+            assert!(temp.path().join(".wisteria/work/src/Main.java").exists());
+            assert!(temp.path().join(".wisteria/work/src/nested/Other.java").exists());
+            assert!(!temp.path().join(".wisteria/work/src/notes.txt").exists());
+        });
+    }
+
+    #[test]
+    fn collect_sources_rejects_empty_source_list() {
+        let configuration = configuration("sources = [ ]");
+
+        let error = collect_sources(&configuration).unwrap_err();
+
+        assert_eq!(error.0, "No source folders given, nothing to compile");
+        assert_eq!(error.1, 1);
+    }
+}

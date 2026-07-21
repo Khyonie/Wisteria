@@ -114,3 +114,55 @@ pub fn generate_project(project: &Project) -> Result<String, String> {
 
     Ok(String::from_utf8(bytes).unwrap())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use std::fs;
+
+    fn project_from_toml(contents: &str) -> Project {
+        let temp = TempDir::new("eclipse-project-generator");
+        let project_file = temp.path().join("project.toml");
+        fs::write(&project_file, contents).unwrap();
+
+        Project::from(Some(project_file.to_string_lossy().to_string())).unwrap()
+    }
+
+    #[test]
+    fn generated_project_xml_contains_project_name_and_java_nature() {
+        let project = project_from_toml(
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+            natures = [ "eclipse" ]
+            "#,
+        );
+
+        let xml = generate_project(&project).unwrap();
+
+        assert!(xml.contains("<name>Demo</name>"));
+        assert!(xml.contains("org.eclipse.jdt.core.javabuilder"));
+        assert!(xml.contains("org.eclipse.jdt.core.javanature"));
+        assert!(!xml.contains("org.eclipse.m2e.core.maven2Nature"));
+    }
+
+    #[test]
+    fn generated_project_xml_includes_maven_nature_when_configured() {
+        let project = project_from_toml(
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+            natures = [ "eclipse", "maven" ]
+            "#,
+        );
+
+        let xml = generate_project(&project).unwrap();
+
+        assert!(xml.contains("org.eclipse.m2e.core.maven2Nature"));
+    }
+}

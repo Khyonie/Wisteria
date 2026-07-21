@@ -228,3 +228,99 @@ fn write_text_element<W: std::io::Write>(
         .write(XmlEvent::end_element())
         .map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use std::fs;
+
+    fn project_from_toml(temp: &TempDir, contents: &str) -> Project {
+        let project_file = temp.path().join("project.toml");
+        fs::write(&project_file, contents).unwrap();
+
+        Project::from(Some(project_file.to_string_lossy().to_string())).unwrap()
+    }
+
+    #[test]
+    fn generate_pom_writes_basic_project_coordinates_and_java_release() {
+        let temp = TempDir::new("pom-basic");
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.2.3"
+            description = "Demo"
+
+            [configuration.main]
+            java_version = 21
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let pom = generate_pom(&project, configuration).unwrap();
+
+        assert!(pom.contains("<groupId>com.example</groupId>"));
+        assert!(pom.contains("<artifactId>Demo</artifactId>"));
+        assert!(pom.contains("<version>1.2.3</version>"));
+        assert!(pom.contains("<maven.compiler.release>21</maven.compiler.release>"));
+        assert!(pom.contains("<dependencies />") || pom.contains("<dependencies>"));
+    }
+
+    #[test]
+    fn collect_repositories_skips_default_central_and_deduplicates_custom_urls() {
+        let temp = TempDir::new("pom-repositories");
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+
+            [dependencies]
+            central = { type = "fetchFromMaven", group_id = "com.example", artifact_id = "central" }
+            custom_a = { type = "fetchFromMaven", url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "a" }
+            custom_b = { type = "fetchFromMaven", url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "b" }
+            local = { type = "loadArchive", path = "lib/local.jar" }
+
+            [configuration.main]
+            dependencies = [ "central", "custom_a", "custom_b", "local" ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let repositories = collect_repositories(&project, configuration);
+
+        assert_eq!(repositories.len(), 1);
+        assert_eq!(
+            repositories.get("wisteria-repository-1").map(String::as_str),
+            Some("https://repo.example.com/maven")
+        );
+    }
+
+    #[test]
+    fn artifact_version_parses_special_version_selectors() {
+        assert!(matches!(artifact_version(None), ArtifactVersion::Latest));
+        assert!(matches!(
+            artifact_version(Some(&String::from("latest"))),
+            ArtifactVersion::Latest
+        ));
+        assert!(matches!(
+            artifact_version(Some(&String::from("release"))),
+            ArtifactVersion::Release
+        ));
+        match artifact_version(Some(&String::from("1.0.0"))) {
+            ArtifactVersion::Version { version } => assert_eq!(version, "1.0.0"),
+            _ => panic!("expected explicit version"),
+        }
+    }
+
+    #[test]
+    fn recognizes_default_maven_central_with_or_without_trailing_slash() {
+        assert!(is_default_maven_central("https://repo1.maven.org/maven2"));
+        assert!(is_default_maven_central("https://repo1.maven.org/maven2/"));
+        assert!(!is_default_maven_central("https://repo.example.com/maven"));
+    }
+}

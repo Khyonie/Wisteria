@@ -318,4 +318,93 @@ mod tests {
 
         assert!(error.0.contains("Unexpected GitHub release type"));
     }
+
+    #[test]
+    fn load_folder_dependency_defaults_to_recursive() {
+        let dependency = load_dependency(
+            r#"
+            type = "loadFolder"
+            path = "lib/"
+            "#,
+        );
+
+        match dependency {
+            Dependency::LocalFolder { path, recursive } => {
+                assert_eq!(path, "lib/");
+                assert!(recursive);
+            }
+            _ => panic!("expected local folder dependency"),
+        }
+    }
+
+    #[test]
+    fn fetch_from_url_loads_update_policy_and_javadoc() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromUrl"
+            url = "https://example.com/library.jar"
+            update_policy = "Never"
+            javadoc = "https://example.com/docs"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromUrl {
+                url,
+                update_policy,
+                javadoc,
+            } => {
+                assert_eq!(url, "https://example.com/library.jar");
+                assert!(matches!(update_policy, UpdatePolicy::Never));
+                assert_eq!(javadoc.as_deref(), Some("https://example.com/docs"));
+            }
+            _ => panic!("expected URL dependency"),
+        }
+    }
+
+    #[test]
+    fn fetch_from_maven_uses_default_repository_url() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromMaven"
+            group_id = "com.example"
+            artifact_id = "library"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromMaven {
+                url,
+                group_id,
+                artifact_id,
+                version,
+                classifier,
+                ..
+            } => {
+                assert_eq!(url, "https://repo1.maven.org/maven2/");
+                assert_eq!(group_id, "com.example");
+                assert_eq!(artifact_id, "library");
+                assert!(version.is_none());
+                assert!(classifier.is_none());
+            }
+            _ => panic!("expected Maven dependency"),
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_dependency_type() {
+        let error = match Dependency::load(
+            &r#"
+            type = "unknown"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected unknown dependency type to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Unknown dependency type"));
+        assert_eq!(error.1, 31);
+    }
 }
