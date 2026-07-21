@@ -247,3 +247,165 @@ impl ProjectInfo {
         &self.configurations
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dependency::Dependency;
+    use crate::test_support::TempDir;
+    use std::fs;
+
+    fn write_project(temp: &TempDir, contents: &str) -> String {
+        let path = temp.path().join("project.toml");
+        fs::write(&path, contents).unwrap();
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn loads_project_metadata_dependencies_natures_and_configurations() {
+        let temp = TempDir::new("project-load");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.2.3"
+            description = "Demo project"
+            authors = [ "Alice", "Bob" ]
+            license = "MIT"
+            homepage = "https://example.com"
+            sourcepage = "https://github.com/Example/Demo"
+            natures = [ "eclipse", "maven" ]
+
+            [dependencies]
+            github = { type = "fetchFromGithub", repository = "Example/Library" }
+            local = { type = "loadArchive", path = "lib/local.jar" }
+
+            [configuration.main]
+            sources = [ "src/" ]
+            dependencies = [ "github", "local" ]
+            targets = [ "target/demo.jar" ]
+            "#,
+        );
+
+        let project = Project::from(Some(project_file)).unwrap();
+
+        assert_eq!(project.info().name(), "Demo");
+        assert_eq!(project.info().description(), "Demo project");
+        assert_eq!(project.info().authors(), &["Alice", "Bob"]);
+        assert_eq!(project.info().license(), &["MIT"]);
+        assert_eq!(project.info().homepage().map(String::as_str), Some("https://example.com"));
+        assert_eq!(
+            project.info().sourcepage().map(String::as_str),
+            Some("https://github.com/Example/Demo")
+        );
+        assert_eq!(project.info().natures().len(), 2);
+        assert!(matches!(project.info().natures()[0], Nature::Eclipse));
+        assert!(matches!(project.info().natures()[1], Nature::Maven));
+
+        match project.dependencies().get("github").unwrap() {
+            Dependency::FetchFromGithub {
+                username,
+                repository,
+                asset,
+                ..
+            } => {
+                assert_eq!(username, "Example");
+                assert_eq!(repository, "Library");
+                assert_eq!(asset, "Library");
+            }
+            _ => panic!("expected GitHub dependency"),
+        }
+
+        let configuration = project.info().configurations().get("main").unwrap();
+        assert!(configuration.tasks().contains_key("build"));
+    }
+
+    #[test]
+    fn applies_single_level_configuration_inheritance() {
+        let temp = TempDir::new("project-inherit");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [configuration.base]
+            sources = [ "src/main/" ]
+            dependencies = [ "base-dep" ]
+            targets = [ "target/base.jar" ]
+
+            [configuration.child]
+            inherit = "base"
+            sources = [ "src/child/" ]
+            dependencies = [ "child-dep" ]
+            "#,
+        );
+
+        let project = Project::from(Some(project_file)).unwrap();
+        let child = project.info().configurations().get("child").unwrap();
+
+        assert_eq!(
+            child.sources().unwrap(),
+            &vec![String::from("src/child/"), String::from("src/main/")]
+        );
+        assert_eq!(
+            child.dependencies().unwrap(),
+            &vec![String::from("child-dep"), String::from("base-dep")]
+        );
+        assert_eq!(child.targets().unwrap(), &vec![String::from("target/base.jar")]);
+        assert!(child.tasks().contains_key("build"));
+    }
+
+    #[test]
+    fn rejects_self_inheriting_configuration() {
+        let temp = TempDir::new("project-self-inherit");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [configuration.main]
+            inherit = "main"
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected self-inheritance to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("cannot inherit from itself"));
+        assert_eq!(error.1, 40);
+    }
+
+    #[test]
+    fn rejects_missing_inherited_configuration() {
+        let temp = TempDir::new("project-missing-inherit");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [configuration.main]
+            inherit = "missing"
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected missing inherited configuration to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("No such configuration"));
+        assert_eq!(error.1, 41);
+    }
+}

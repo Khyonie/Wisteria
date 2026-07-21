@@ -92,3 +92,80 @@ pub fn string_vec_to_string(data: &Vec<String>) -> String {
 
     string
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use toml::Table;
+
+    fn table(toml: &str) -> Table {
+        toml.parse::<Table>().unwrap()
+    }
+
+    #[test]
+    fn reads_expected_scalar_types() {
+        let toml = table(
+            r#"
+            name = "Demo"
+            enabled = true
+            version = 17
+            "#,
+        );
+
+        assert_eq!(read_string("name", &toml).as_deref(), Ok("Demo"));
+        assert_eq!(read_boolean("enabled", &toml), Ok(true));
+        assert_eq!(read_integer("version", &toml), Ok(17));
+    }
+
+    #[test]
+    fn reports_type_mismatches_with_specific_codes() {
+        let toml = table(
+            r#"
+            name = 12
+            enabled = "yes"
+            version = "17"
+            "#,
+        );
+
+        assert_eq!(read_string("name", &toml).unwrap_err().1, 11);
+        assert_eq!(read_boolean("enabled", &toml).unwrap_err().1, 12);
+        assert_eq!(read_integer("version", &toml).unwrap_err().1, 14);
+    }
+
+    #[test]
+    fn reads_string_arrays_and_string_shorthand() {
+        let toml = table(
+            r#"
+            source = "src/"
+            dependencies = [ "a", "b" ]
+            "#,
+        );
+
+        assert_eq!(read_string_array("source", &toml).unwrap(), vec!["src/"]);
+        assert_eq!(
+            read_string_array("dependencies", &toml).unwrap(),
+            vec!["a", "b"]
+        );
+    }
+
+    #[test]
+    fn rejects_non_string_array_elements() {
+        let toml = table(r#"dependencies = [ "a", 1 ]"#);
+
+        let error = read_string_array("dependencies", &toml).unwrap_err();
+
+        assert!(error.0.contains("Mismatched element"));
+        assert_eq!(error.1, 15);
+    }
+
+    #[test]
+    fn joins_string_vectors_with_commas() {
+        let values = vec![
+            String::from("alpha"),
+            String::from("beta"),
+            String::from("gamma"),
+        ];
+
+        assert_eq!(string_vec_to_string(&values), "alpha, beta, gamma");
+    }
+}

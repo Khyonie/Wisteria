@@ -19,8 +19,9 @@ struct ResolvedDependencies {
     classpath: Option<String>,
 }
 
-impl ImplicitBuildTask {
-    pub fn new() -> Self {
+impl Default for ImplicitBuildTask
+{
+    fn default() -> Self {
         ImplicitBuildTask {
             order: vec![
                 String::from("collect"),
@@ -29,6 +30,12 @@ impl ImplicitBuildTask {
                 String::from("package"),
             ],
         }
+    }
+}
+
+impl ImplicitBuildTask {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -86,31 +93,34 @@ fn resolve_dependencies(
         let size = dependencies.len();
 
         for (index, d) in dependencies.iter().enumerate() {
-            if let Some((name, dep)) = project.dependencies().get_key_value(d) {
-                print!(
-                    "({}/{size}) Updating {:width$}",
-                    index + 1,
-                    format!("{name} ... ")
-                );
-                let mut updated = match dep.resolve(
-                    name,
-                    configuration.environment(),
-                    regexes,
-                    UpdateContext::TaskInvoked,
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        println!("Could not download {name}: {}", e.0);
-                        failed_downloads.push((name.clone(), e.0));
-                        continue;
+            match project.dependencies().get_key_value(d) {
+                Some((name, dep)) => {
+                    print!(
+                        "({}/{size}) Updating {:width$}",
+                        index + 1,
+                        format!("{name} ... ")
+                    );
+                    let mut updated = match dep.resolve(
+                        name,
+                        configuration.environment(),
+                        regexes,
+                        UpdateContext::TaskInvoked,
+                    ) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            println!("Could not download {name}: {}", e.0);
+                            failed_downloads.push((name.clone(), e.0));
+                            continue;
+                        }
+                    };
+
+                    if dep.is_shaded(name, configuration).is_some_and(|s| s) {
+                        shaded_jars.append(&mut updated.clone());
                     }
-                };
 
-                if dep.is_shaded(name, configuration).is_some_and(|s| s) {
-                    shaded_jars.append(&mut updated.clone());
-                }
-
-                paths.append(&mut updated);
+                    paths.append(&mut updated);
+                },
+                None => return Err((format!("Usage of undeclared dependency \"{d}\""), 1))
             }
         }
 

@@ -1,10 +1,12 @@
 use std::process::exit;
 
+use crate::cli::args::StartupFlags;
 use crate::cli::commands::{envvar_regexes, update_dependencies_with_context};
 use crate::dependency::UpdateContext;
 use crate::model::{Metadata, Project};
+use crate::workspace::refresh::refresh;
 
-pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
+pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], flags: &StartupFlags) {
     let project: Project = match project {
         Ok(p) => p,
         Err(e) => {
@@ -30,6 +32,7 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
         .get(&metadata.configuration)
         .unwrap();
     let regexes = envvar_regexes();
+    let mut refresh_failed = false;
 
     if args[2] == "all" {
         let keys: Vec<String> = project.dependencies().keys().cloned().collect();
@@ -42,12 +45,26 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
             UpdateContext::Update,
         );
 
+        if !flags.no_refresh {
+            if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+            {
+                println!("Failed to refresh nature {}: {error}", nature.type_str());
+                refresh_failed = true
+            }
+        }
+
         if !failed.is_empty() {
             println!("Failed to resolve one or more dependencies:");
             for (name, reason) in &failed {
                 println!("\t{name}: {reason}");
             }
 
+            exit(1)
+        }
+
+        if refresh_failed
+        {
+            println!("Dependencies updated, however project might be in a degraded state.");
             exit(1)
         }
 
@@ -74,12 +91,25 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String]) {
         UpdateContext::Update,
     );
 
+    if !flags.no_refresh {
+        if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        {
+            println!("Failed to refresh nature {}: {error}", nature.type_str());
+            refresh_failed = true
+        }
+    }
+
     if !failed.is_empty() {
         println!("Failed to resolve one or more dependencies:");
         for (name, reason) in &failed {
             println!("\t{name}: {reason}");
         }
 
+        exit(1)
+    }
+    if refresh_failed
+    {
+        println!("Dependency updated, however project might be in a degraded state.");
         exit(1)
     }
 

@@ -25,7 +25,6 @@ pub struct Configuration {
     tasks: HashMap<String, Rc<dyn TaskRunner>>,
     compiler_flags: Option<Vec<CompilerFlags>>,
     environment: HashMap<String, String>,
-    natures: Vec<String>,
     inherit: Option<String>,
 }
 
@@ -112,15 +111,6 @@ impl Configuration {
             None => {}
         }
 
-        let mut natures: Vec<String> = Vec::new();
-        if let Ok(mut n) = toml_utils::read_string_array("natures", toml) {
-            natures.append(&mut n);
-        }
-
-        if !natures.contains(&String::from("wisteria")) {
-            natures.insert(0, String::from("wisteria"));
-        }
-
         let compiler_flags: Option<Vec<CompilerFlags>> = match toml.get("compiler_flags") {
             Some(t) if t.is_table() => {
                 let t = t.as_table().unwrap();
@@ -156,7 +146,6 @@ impl Configuration {
             tasks,
             compiler_flags,
             environment,
-            natures,
             inherit,
         })
     }
@@ -338,5 +327,209 @@ fn inherit_vec<T: Clone + Eq>(
         }
         None if host.is_some() => Some(host.unwrap().clone()),
         None => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::java::compiler_flags::CompilerFlags;
+
+    fn table(toml: &str) -> Table {
+        toml.parse::<Table>().unwrap()
+    }
+
+    #[test]
+    fn configuration_defaults_project_environment_and_java_version() {
+        let configuration = Configuration::from(
+            String::from("main"),
+            &table(""),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        assert_eq!(configuration.java_version(), 8);
+        assert_eq!(
+            configuration.environment().get("project_name").map(String::as_str),
+            Some("Demo")
+        );
+        assert_eq!(
+            configuration.environment().get("configuration").map(String::as_str),
+            Some("main")
+        );
+        assert_eq!(
+            configuration.environment().get("version").map(String::as_str),
+            Some("1.0.0")
+        );
+    }
+
+    #[test]
+    fn configuration_loads_fields_and_compiler_flags() {
+        let configuration = Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                sources = "src/"
+                dependencies = [ "dep-a", "dep-b" ]
+                shaded = [ "dep-b" ]
+                includes = [ "plugin.yml" ]
+                targets = [ "target/demo.jar" ]
+                entry = "com.example.Main"
+                java_version = 21
+
+                [environment]
+                channel = "stable"
+
+                [compiler_flags]
+                store_parameter_names = true
+                source_encoding = "UTF-8"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        assert_eq!(configuration.sources().unwrap(), &vec![String::from("src/")]);
+        assert_eq!(
+            configuration.dependencies().unwrap(),
+            &vec![String::from("dep-a"), String::from("dep-b")]
+        );
+        assert_eq!(configuration.shaded().unwrap(), &vec![String::from("dep-b")]);
+        assert_eq!(
+            configuration.includes().unwrap(),
+            &vec![String::from("plugin.yml")]
+        );
+        assert_eq!(
+            configuration.targets().unwrap(),
+            &vec![String::from("target/demo.jar")]
+        );
+        assert_eq!(configuration.entry().map(String::as_str), Some("com.example.Main"));
+        assert_eq!(configuration.java_version(), 21);
+        assert_eq!(
+            configuration.environment().get("channel").map(String::as_str),
+            Some("stable")
+        );
+        assert!(configuration
+            .compiler_flags()
+            .unwrap()
+            .contains(&CompilerFlags::StoreParameterNames { setting: true }));
+        assert!(configuration
+            .compiler_flags()
+            .unwrap()
+            .contains(&CompilerFlags::Encoding {
+                encoding: String::from("UTF-8")
+            }));
+    }
+
+    #[test]
+    fn apply_implicit_adds_build_task_when_sources_and_targets_exist() {
+        let mut configuration = Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                sources = [ "src/" ]
+                targets = [ "target/demo.jar" ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        configuration.apply_implicit();
+
+        let build = configuration.tasks().get("build").unwrap();
+        assert_eq!(
+            build.phase_order(),
+            &[
+                String::from("collect"),
+                String::from("compile"),
+                String::from("shade"),
+                String::from("package"),
+            ]
+        );
+    }
+
+    #[test]
+    fn inherit_from_appends_unique_values_and_inherits_missing_fields() {
+        let parent = Configuration::from(
+            String::from("base"),
+            &table(
+                r#"
+                sources = [ "src/main/" ]
+                dependencies = [ "dep-a" ]
+                includes = [ "plugin.yml" ]
+                targets = [ "target/base.jar" ]
+                entry = "com.example.Main"
+                java_version = 17
+
+                [environment]
+                inherited = "yes"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+        let mut child = Configuration::from(
+            String::from("child"),
+            &table(
+                r#"
+                sources = [ "src/main/", "src/child/" ]
+                dependencies = [ "dep-b" ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        child.inherit_from(&parent);
+
+        assert_eq!(
+            child.sources().unwrap(),
+            &vec![String::from("src/main/"), String::from("src/child/")]
+        );
+        assert_eq!(
+            child.dependencies().unwrap(),
+            &vec![String::from("dep-b"), String::from("dep-a")]
+        );
+        assert_eq!(
+            child.includes().unwrap(),
+            &vec![String::from("plugin.yml")]
+        );
+        assert_eq!(
+            child.targets().unwrap(),
+            &vec![String::from("target/base.jar")]
+        );
+        assert_eq!(child.entry().map(String::as_str), Some("com.example.Main"));
+        assert_eq!(child.java_version(), 17);
+        assert_eq!(
+            child.environment().get("inherited").map(String::as_str),
+            Some("yes")
+        );
+    }
+
+    #[test]
+    fn rejects_non_string_environment_values() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                [environment]
+                port = 25565
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected non-string environment value to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Mismatched type for environment variable"));
+        assert_eq!(error.1, 15);
     }
 }

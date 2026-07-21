@@ -21,3 +21,24 @@ pub fn resolve(
 
     Ok(vec![PathBuf::from(filepath)])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_without_update_returns_expected_cache_path_without_downloading() {
+        let paths = resolve(
+            "library",
+            "https://example.com/library.jar",
+            &UpdatePolicy::Never,
+            &UpdateContext::ResolveOnly,
+        )
+        .unwrap();
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(".wisteria/cache/library/library.jar")]
+        );
+    }
+}

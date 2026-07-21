@@ -93,3 +93,101 @@ fn collect_recursive(path: &Path, files: &mut Vec<PathBuf>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use std::{collections::HashMap, fs};
+
+    fn regexes() -> HashMap<&'static str, Regex> {
+        let mut regexes = HashMap::new();
+        regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
+        regexes
+    }
+
+    fn environment() -> HashMap<String, String> {
+        HashMap::from([(String::from("lib"), String::from("library.jar"))])
+    }
+
+    #[test]
+    fn resolve_file_returns_canonical_file_path() {
+        let temp = TempDir::new("local-resolve-file");
+        let library = temp.path().join("library.jar");
+        fs::write(&library, "").unwrap();
+
+        let paths = resolve_file(&library.to_string_lossy(), &environment(), &regexes()).unwrap();
+
+        assert_eq!(paths, vec![library.canonicalize().unwrap()]);
+    }
+
+    #[test]
+    fn resolve_file_substitutes_environment_variables() {
+        let temp = TempDir::new("local-resolve-env-file");
+        let library = temp.path().join("library.jar");
+        fs::write(&library, "").unwrap();
+        let path = temp.path().join("{lib}");
+
+        let paths = resolve_file(&path.to_string_lossy(), &environment(), &regexes()).unwrap();
+
+        assert_eq!(paths, vec![library.canonicalize().unwrap()]);
+    }
+
+    #[test]
+    fn resolve_file_rejects_missing_file() {
+        let temp = TempDir::new("local-missing-file");
+        let error = resolve_file(
+            &temp.path().join("missing.jar").to_string_lossy(),
+            &environment(),
+            &regexes(),
+        )
+        .unwrap_err();
+
+        assert!(error.0.contains("does not exist"));
+        assert_eq!(error.1, 63);
+    }
+
+    #[test]
+    fn resolve_folder_collects_jar_files_recursively_when_requested() {
+        let temp = TempDir::new("local-resolve-folder");
+        fs::create_dir_all(temp.path().join("lib/nested")).unwrap();
+        fs::write(temp.path().join("lib/root.jar"), "").unwrap();
+        fs::write(temp.path().join("lib/nested/nested.jar"), "").unwrap();
+        fs::write(temp.path().join("lib/nested/readme.txt"), "").unwrap();
+
+        let mut paths = resolve_folder(
+            &temp.path().join("lib").to_string_lossy(),
+            true,
+            &environment(),
+            &regexes(),
+        )
+        .unwrap();
+        paths.sort();
+
+        assert_eq!(
+            paths,
+            vec![
+                temp.path().join("lib/nested/nested.jar"),
+                temp.path().join("lib/root.jar"),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_folder_skips_nested_jar_files_when_not_recursive() {
+        let temp = TempDir::new("local-resolve-folder-nonrecursive");
+        fs::create_dir_all(temp.path().join("lib/nested")).unwrap();
+        fs::write(temp.path().join("lib/root.jar"), "").unwrap();
+        fs::write(temp.path().join("lib/nested/nested.jar"), "").unwrap();
+
+        let paths = resolve_folder(
+            &temp.path().join("lib").to_string_lossy(),
+            false,
+            &environment(),
+            &regexes(),
+        )
+        .unwrap();
+
+        assert_eq!(paths, vec![temp.path().join("lib/root.jar")]);
+    }
+}

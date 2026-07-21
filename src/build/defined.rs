@@ -128,3 +128,90 @@ impl TaskRunner for DefinedTask {
         self.phase_order.as_ref()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use toml::Table;
+
+    fn task_table(toml: &str) -> Table {
+        toml.parse::<Table>().unwrap()
+    }
+
+    #[test]
+    fn parses_defined_task_phases_and_order() {
+        let toml = task_table(
+            r#"
+            phases = [ "prepare", "run" ]
+
+            [phase]
+            prepare = [ "echo preparing" ]
+            run = [ "echo running" ]
+            "#,
+        );
+
+        let task = DefinedTask::new("custom", &toml).unwrap();
+
+        assert_eq!(
+            task.phase_order(),
+            &[String::from("prepare"), String::from("run")]
+        );
+        assert_eq!(
+            task.phases.get("prepare").unwrap(),
+            &vec![String::from("echo preparing")]
+        );
+    }
+
+    #[test]
+    fn rejects_missing_phase_table() {
+        let toml = task_table(r#"phases = [ "run" ]"#);
+
+        let error = match DefinedTask::new("custom", &toml) {
+            Ok(_) => panic!("expected missing phase table to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Missing key \"phase\""));
+        assert_eq!(error.1, 10);
+    }
+
+    #[test]
+    fn rejects_non_string_phase_action() {
+        let toml = task_table(
+            r#"
+            phases = [ "run" ]
+
+            [phase]
+            run = [ 1 ]
+            "#,
+        );
+
+        let error = match DefinedTask::new("custom", &toml) {
+            Ok(_) => panic!("expected non-string phase action to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Mismatched type for phase element"));
+        assert_eq!(error.1, 15);
+    }
+
+    #[test]
+    fn rejects_non_string_phase_order_entry() {
+        let toml = task_table(
+            r#"
+            phases = [ "run", 1 ]
+
+            [phase]
+            run = [ "echo running" ]
+            "#,
+        );
+
+        let error = match DefinedTask::new("custom", &toml) {
+            Ok(_) => panic!("expected non-string phase order entry to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Mismatched type for phase order element"));
+        assert_eq!(error.1, 15);
+    }
+}

@@ -148,3 +148,94 @@ fn has_maven_nature(project: &Project) -> bool {
         .iter()
         .any(|nature| matches!(nature, Nature::Maven))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use std::fs;
+
+    fn regexes() -> HashMap<&'static str, Regex> {
+        let mut regexes = HashMap::new();
+        regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
+        regexes
+    }
+
+    fn project_from_toml(temp: &TempDir, contents: &str) -> Project {
+        let project_file = temp.path().join("project.toml");
+        fs::write(&project_file, contents).unwrap();
+
+        Project::from(Some(project_file.to_string_lossy().to_string())).unwrap()
+    }
+
+    #[test]
+    fn generated_classpath_contains_sources_local_libraries_and_containers() {
+        let temp = TempDir::new("classpath-local");
+        let library = temp.path().join("lib/library.jar");
+        fs::create_dir_all(library.parent().unwrap()).unwrap();
+        fs::write(&library, "").unwrap();
+
+        let project = project_from_toml(
+            &temp,
+            &format!(
+                r#"
+                [project]
+                name = "Demo"
+                version = "1.0.0"
+                description = "Demo"
+                natures = [ "eclipse" ]
+
+                [dependencies]
+                library = {{ type = "loadArchive", path = "{}" }}
+
+                [configuration.main]
+                sources = [ "src/" ]
+                dependencies = [ "library" ]
+                targets = [ "target/demo.jar" ]
+                "#,
+                library.to_string_lossy()
+            ),
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let xml = generate_classpath(&project, configuration, &regexes()).unwrap();
+
+        assert!(xml.contains(r#"kind="src""#));
+        assert!(xml.contains(r#"path="src/""#));
+        assert!(xml.contains(&format!(
+            r#"path="{}""#,
+            library.canonicalize().unwrap().to_string_lossy()
+        )));
+        assert!(xml.contains("org.eclipse.jdt.launching.JRE_CONTAINER"));
+        assert!(xml.contains(r#"path="target/classes/""#));
+    }
+
+    #[test]
+    fn generated_classpath_uses_maven_container_for_maven_dependencies() {
+        let temp = TempDir::new("classpath-maven");
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+            natures = [ "eclipse", "maven" ]
+
+            [dependencies]
+            library = { type = "fetchFromMaven", group_id = "com.example", artifact_id = "library" }
+
+            [configuration.main]
+            sources = [ "src/" ]
+            dependencies = [ "library" ]
+            targets = [ "target/demo.jar" ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let xml = generate_classpath(&project, configuration, &regexes()).unwrap();
+
+        assert!(xml.contains("org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER"));
+        assert!(!xml.contains(".wisteria/cache/com.example/library"));
+    }
+}

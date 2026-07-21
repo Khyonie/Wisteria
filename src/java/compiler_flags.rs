@@ -35,7 +35,7 @@ impl CompilerFlags {
                         match i.try_into()
                         {
                             Ok(version) => Ok(Self::ReleaseTarget { version }),
-                            Err(_) => Err((format!("Java version out of range, expected a number between 255, found {i}"), 52))
+                            Err(_) => Err((format!("Java version out of range, expected a number between 1 and 255, found {i}"), 52))
                         }
                     }
                     None => Err((format!("Mismatched type for compiler flag \"release_target\", expected an integer, found {}", value.type_str()), 14))
@@ -219,5 +219,104 @@ impl CompilerFlags {
                 vec![String::from("--encoding"), encoding.to_string()]
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_release_target_and_canonicalizes_flag() {
+        let flag = CompilerFlags::from("release_target", &Value::Integer(21)).unwrap();
+
+        match &flag {
+            CompilerFlags::ReleaseTarget { version } => assert_eq!(*version, 21),
+            _ => panic!("expected release target flag"),
+        }
+        assert_eq!(
+            flag.get_canon_flag(),
+            vec![String::from("--release"), String::from("21")]
+        );
+    }
+
+    #[test]
+    fn rejects_negative_release_target() {
+        let error = match CompilerFlags::from("release_target", &Value::Integer(-1)) {
+            Ok(_) => panic!("expected negative release target to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Illegal Java version"));
+        assert_eq!(error.1, 52);
+    }
+
+    #[test]
+    fn boolean_flags_emit_only_when_enabled() {
+        assert_eq!(
+            CompilerFlags::from("enable_preview_features", &Value::Boolean(true))
+                .unwrap()
+                .get_canon_flag(),
+            vec![String::from("--enable-preview")]
+        );
+        assert!(
+            CompilerFlags::from("enable_preview_features", &Value::Boolean(false))
+                .unwrap()
+                .get_canon_flag()
+                .is_empty()
+        );
+        assert_eq!(
+            CompilerFlags::from("store_parameter_names", &Value::Boolean(true))
+                .unwrap()
+                .get_canon_flag(),
+            vec![String::from("-parameters")]
+        );
+    }
+
+    #[test]
+    fn lint_flags_join_selected_lints() {
+        let value = Value::Array(vec![
+            Value::String(String::from("deprecation")),
+            Value::String(String::from("unchecked")),
+        ]);
+
+        assert_eq!(
+            CompilerFlags::from("source_lints", &value)
+                .unwrap()
+                .get_canon_flag(),
+            vec![String::from("-Xlint:deprecation,unchecked")]
+        );
+    }
+
+    #[test]
+    fn rejects_empty_lint_list() {
+        let error = match CompilerFlags::from("javadoc_lints", &Value::Array(Vec::new())) {
+            Ok(_) => panic!("expected empty lint list to fail"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.0, "At least one lint must be given");
+        assert_eq!(error.1, 51);
+    }
+
+    #[test]
+    fn parses_source_encoding() {
+        assert_eq!(
+            CompilerFlags::from("source_encoding", &Value::String(String::from("UTF-8")))
+                .unwrap()
+                .get_canon_flag(),
+            vec![String::from("--encoding"), String::from("UTF-8")]
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_compiler_flag() {
+        let error = match CompilerFlags::from("not_a_flag", &Value::Boolean(true)) {
+            Ok(_) => panic!("expected unknown compiler flag to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Unrecognized compiler flag"));
+        assert_eq!(error.1, 50);
     }
 }

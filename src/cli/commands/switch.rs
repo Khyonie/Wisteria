@@ -5,7 +5,7 @@ use crate::cli::commands::{envvar_regexes, print_header, update_dependencies_wit
 use crate::dependency::UpdateContext;
 use crate::generators::generate_metadata;
 use crate::model::{Configuration, Metadata, Project};
-use crate::workspace::nature::Nature;
+use crate::workspace::refresh::refresh;
 
 pub fn trigger_switch(
     project: Result<Project, (String, u8)>,
@@ -46,21 +46,14 @@ pub fn trigger_switch(
         }
     };
 
-    if !flags.no_refresh {
-        // TODO Move refresh logic into here
-    }
     let regexes = envvar_regexes();
-
-    print!("Removing natures... ");
-    for nature in Nature::values() {
-        let _ = nature.remove_nature();
-    }
-    println!("Done!");
-
-    for nature in project.info().natures() {
-        print!("Applying project nature \"{}\"... ", nature.type_str());
-        nature.setup_nature(&project, configuration, &regexes);
-        println!("Done!");
+    if !flags.no_refresh {
+        if let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        {
+            println!("Failed to refresh nature {}: {error}", nature.type_str());
+            println!("Project might be in a degraded state.");
+            exit(1)
+        }
     }
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
