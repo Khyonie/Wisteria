@@ -11,8 +11,9 @@ pub fn package_jar(
     configuration: &Configuration,
     dep_paths: &[PathBuf],
     shaded_jars: &[PathBuf],
+    targets: Option<&Vec<String>>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<(), (String, u8)> {
+) -> Result<Vec<String>, (String, u8)> {
     let mut manifest: Manifest = Manifest::new();
     manifest.add_entry(ManifestEntry::CreatedBy {
         signature: String::from("Wisteria 3"),
@@ -81,11 +82,12 @@ pub fn package_jar(
         let _ = jar_update_command.output();
     }
 
+    let mut outputs = Vec::new();
     let bytes: Vec<u8> = fs::read(".wisteria/work/target.jar").unwrap();
     let hash = digest(bytes);
     println!("Packaged, hash: #{hash}");
 
-    if let Some(targets) = configuration.targets() {
+    if let Some(targets) = targets {
         for target in targets {
             let target = resolve_filepath(target, configuration.environment(), regexes)?;
             let target_path: PathBuf = PathBuf::from(&target);
@@ -107,8 +109,9 @@ pub fn package_jar(
             fs::write(&target, fs::read(".wisteria/work/target.jar").unwrap())
                 .map_err(|e| (format!("Failed to write to target {target}: {e}"), 1))?;
             println!("Successfully written target {target}");
+            outputs.push(target_path.to_string_lossy().to_string())
         }
     }
 
-    Ok(())
+    Ok(outputs)
 }
