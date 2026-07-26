@@ -3,6 +3,7 @@ use std::{env, process::exit};
 use crate::util::consts;
 
 /// Flags added with the -- prefix.
+#[derive(Clone)]
 pub struct StartupFlags {
     pub minimal: bool,
     pub use_project: Option<String>,

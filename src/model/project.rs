@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs::read_to_string};
 use toml::Table;
 
 use crate::{
-    config::toml_utils, dependency::Dependency, model::Configuration, workspace::nature::Nature,
+    cli::args::StartupFlags, config::toml_utils, dependency::Dependency, model::Configuration, workspace::nature::Nature
 };
 
 /// Collection of identifying information for a project.
@@ -27,7 +27,7 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn from(project_file: Option<String>) -> Result<Self, (String, u8)> {
+    pub fn from(project_file: Option<String>, flags: StartupFlags) -> Result<Self, (String, u8)> {
         let project_toml_string =
             read_to_string(project_file.unwrap_or(String::from("project.toml")))
                 .map_err(|e| (format!("{e}"), 1))?;
@@ -73,7 +73,7 @@ impl Project {
                         {
                             Some(config) if config.is_table() => {
                                 let mut configuration = Configuration::from(key.clone(), config.as_table().unwrap(), name.clone(), version.clone())?;
-                                configuration.apply_implicit();
+                                configuration.apply_implicit(flags.clone());
                                 configurations.insert(key.clone(), configuration)
                             }
                             Some(v) => return Err((format!("Mismatched type for task \"{key}\", expected a table, found {}", v.type_str()), 16)),
@@ -96,7 +96,7 @@ impl Project {
 
                             let mut inheritor: Configuration = configuration.clone();
                             inheritor.inherit_from(target);
-                            inheritor.apply_implicit();
+                            inheritor.apply_implicit(flags.clone());
                             updated_configurations.insert(config_name.clone(), inheritor);
                         }
                     }
