@@ -26,14 +26,14 @@ targets = [ "targets/{configuration}/{project_name}-{configuration}-{version}.ja
 
 ## Usage:
 ### Create a new project
-`-$ wisteria3 create <your project name>` 
+`-$ wisteria create <your project name>` 
 
 Creates a folder in the current directory to contain the new project, with a source folder and a `project.toml` file.
 
 Optionally, add the `--minimal` flag to create the project using a minimal `project.toml`.
 
 ### Build the current project configuration
-`-$ wisteria3 build`
+`-$ wisteria build`
 
 Compiles all .java source files inside the source folder(s) defined in the current project configuration, and packages them as a .jar file defined by the `targets` section of the current project configuration.
 
@@ -49,12 +49,12 @@ Like build, this compiles all .java source files defined in the current project 
 Example: `-$ wisteria3 run -- -Xms4g -Xmx8g`
 
 ### Switch the project configuration
-`-$ wisteria3 switch <configuration>`
+`-$ wisteria switch <configuration>`
 
 Switches the project configuration to a different configuration defined in `project.toml`, and refreshes the workspace. See below for more details.
 
 ### Apply project settings to the workspace
-`-$ wisteria3 refresh`
+`-$ wisteria refresh`
 
 The current `project.toml` settings will apply to the project workspace by generating files based on the natures in `project.natures`. Useful to apply changes to the workspace without switching the current project configuration.
 - "eclipse" nature generates `.project` and `.classpath` files.
@@ -63,7 +63,7 @@ The current `project.toml` settings will apply to the project workspace by gener
 Applicable dependencies may be updated with this action as well.
 
 ### Update dependencies
-`-$ wisteria3 update [dependency | all]`
+`-$ wisteria update [dependency | all]`
 
 Downloads a specific Maven or Github dependency as defined in the `[dependencies]` section of `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
 

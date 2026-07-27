@@ -71,8 +71,16 @@ impl Dependency {
                         })
                     }
                     "fetchFromGithub" => {
-                        let username: String = toml_utils::read_string("username", toml)?;
                         let repository: String = toml_utils::read_string("repository", toml)?;
+                        let username = match toml_utils::read_string("username", toml) {
+                            Ok(username) => Some(username),
+                            Err(_) if !toml.contains_key("username") => None,
+                            Err(e) => return Err(e),
+                        };
+                        let (username, repository) = github_owner_and_repository(
+                            username,
+                            repository,
+                        )?;
                         let tag: Option<String> = toml_utils::read_string("tag", toml).ok();
                         let release_type = GithubReleaseType::load(
                             &toml_utils::read_string("release_type", toml)
@@ -119,6 +127,31 @@ impl Dependency {
             )),
         }
     }
+}
+
+fn github_owner_and_repository(
+    username: Option<String>,
+    repository: String,
+) -> Result<(String, String), (String, u8)> {
+    if let Some(username) = username {
+        return Ok((username, repository));
+    }
+
+    let Some((username, repository)) = repository.split_once('/') else {
+        return Err((
+            String::from("Missing key username and repository is not in owner/repository form"),
+            10,
+        ));
+    };
+
+    if username.is_empty() || repository.is_empty() || repository.contains('/') {
+        return Err((
+            String::from("GitHub repository shorthand must be in owner/repository form"),
+            10,
+        ));
+    }
+
+    Ok((username.to_string(), repository.to_string()))
 }
 
 #[cfg(test)]
@@ -173,6 +206,82 @@ mod tests {
     }
 
     #[test]
+    fn github_dependency_accepts_repository_shorthand() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromGithub"
+            repository = "Example/Library"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromGithub {
+                username,
+                repository,
+                asset,
+                ..
+            } => {
+                assert_eq!(username, "Example");
+                assert_eq!(repository, "Library");
+                assert_eq!(asset, "Library");
+            }
+            _ => panic!("expected GitHub dependency"),
+        }
+    }
+
+    #[test]
+    fn github_dependency_requires_username_or_repository_shorthand() {
+        let error = match Dependency::load(
+            &r#"
+            type = "fetchFromGithub"
+            repository = "Library"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected missing username to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Missing key username"));
+    }
+
+    #[test]
+    fn github_dependency_rejects_invalid_repository_shorthand() {
+        let error = match Dependency::load(
+            &r#"
+            type = "fetchFromGithub"
+            repository = "Example/Org/Library"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected invalid repository shorthand to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("owner/repository"));
+    }
+
+    #[test]
+    fn github_dependency_rejects_malformed_username_with_repository_shorthand() {
+        let error = match Dependency::load(
+            &r#"
+            type = "fetchFromGithub"
+            username = 10
+            repository = "Example/Library"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected malformed username to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Mismatched type for \"username\""));
+    }
+
+    #[test]
     fn github_dependency_accepts_prerelease_selector() {
         let dependency = load_dependency(
             r#"
@@ -208,5 +317,94 @@ mod tests {
         };
 
         assert!(error.0.contains("Unexpected GitHub release type"));
+    }
+
+    #[test]
+    fn load_folder_dependency_defaults_to_recursive() {
+        let dependency = load_dependency(
+            r#"
+            type = "loadFolder"
+            path = "lib/"
+            "#,
+        );
+
+        match dependency {
+            Dependency::LocalFolder { path, recursive } => {
+                assert_eq!(path, "lib/");
+                assert!(recursive);
+            }
+            _ => panic!("expected local folder dependency"),
+        }
+    }
+
+    #[test]
+    fn fetch_from_url_loads_update_policy_and_javadoc() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromUrl"
+            url = "https://example.com/library.jar"
+            update_policy = "Never"
+            javadoc = "https://example.com/docs"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromUrl {
+                url,
+                update_policy,
+                javadoc,
+            } => {
+                assert_eq!(url, "https://example.com/library.jar");
+                assert!(matches!(update_policy, UpdatePolicy::Never));
+                assert_eq!(javadoc.as_deref(), Some("https://example.com/docs"));
+            }
+            _ => panic!("expected URL dependency"),
+        }
+    }
+
+    #[test]
+    fn fetch_from_maven_uses_default_repository_url() {
+        let dependency = load_dependency(
+            r#"
+            type = "fetchFromMaven"
+            group_id = "com.example"
+            artifact_id = "library"
+            "#,
+        );
+
+        match dependency {
+            Dependency::FetchFromMaven {
+                url,
+                group_id,
+                artifact_id,
+                version,
+                classifier,
+                ..
+            } => {
+                assert_eq!(url, "https://repo1.maven.org/maven2/");
+                assert_eq!(group_id, "com.example");
+                assert_eq!(artifact_id, "library");
+                assert!(version.is_none());
+                assert!(classifier.is_none());
+            }
+            _ => panic!("expected Maven dependency"),
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_dependency_type() {
+        let error = match Dependency::load(
+            &r#"
+            type = "unknown"
+            "#
+            .parse::<Table>()
+            .unwrap(),
+        ) {
+            Ok(_) => panic!("expected unknown dependency type to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Unknown dependency type"));
+        assert_eq!(error.1, 31);
     }
 }

@@ -2,7 +2,7 @@ use std::env::consts;
 
 pub const VERSION: &str = "3.4.0";
 
-pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | warranty | license> 
+pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch > 
     (tasks...)
         Runs the specified tasks, in order, and at least one task must be given
 
@@ -20,7 +20,7 @@ pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | up
         Switches the current project configuration and configures the project environment
 
 Flags:
-    --no-refresh
+    --norefresh
         Skips refreshing the project configuration
         (switch)
     --minimal
@@ -64,7 +64,7 @@ pub fn java_seperator() -> char {
 
 pub fn print_action_header(message: &str, action: u32, total: u32) {
     println!(
-        "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-<( {:^19} <{:>2}/{:<2}> )>-=-=-=-=-=-=-=-=-=-=-=-=-=-=-",
+        "────────────────────────────────────────🯝 {:^19} <{:>2}/{:<2}> 🯟────────────────────────────────────────",
         message, action, total
     );
 }

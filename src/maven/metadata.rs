@@ -165,6 +165,66 @@ mod tests {
     }
 
     #[test]
+    fn reads_plain_jar_snapshot_version_when_classifier_is_absent() {
+        let metadata: SnapshotMetadata = from_str(
+            r#"
+            <metadata>
+              <versioning>
+                <snapshotVersions>
+                  <snapshotVersion>
+                    <classifier>sources</classifier>
+                    <extension>jar</extension>
+                    <value>1.0-20260709.120000-1</value>
+                  </snapshotVersion>
+                  <snapshotVersion>
+                    <extension>jar</extension>
+                    <value>1.0-20260709.120000-2</value>
+                  </snapshotVersion>
+                </snapshotVersions>
+              </versioning>
+            </metadata>
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            metadata.take_classifier(None, "1.0-SNAPSHOT").as_deref(),
+            Some("1.0-20260709.120000-2")
+        );
+    }
+
+    #[test]
+    fn reads_maven_metadata_versions() {
+        let metadata: super::MavenMetadata = from_str(
+            r#"
+            <metadata>
+              <versioning>
+                <latest>2.0.0</latest>
+                <release>1.9.0</release>
+                <versions>
+                  <version>1.0.0</version>
+                  <version>1.9.0</version>
+                  <version>2.0.0</version>
+                </versions>
+              </versioning>
+            </metadata>
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(metadata.latest().map(String::as_str), Some("2.0.0"));
+        assert_eq!(metadata.release().map(String::as_str), Some("1.9.0"));
+        assert_eq!(
+            metadata.versions(),
+            &[
+                String::from("1.0.0"),
+                String::from("1.9.0"),
+                String::from("2.0.0"),
+            ]
+        );
+    }
+
+    #[test]
     fn derives_snapshot_value_without_snapshot_versions() {
         let metadata: SnapshotMetadata = from_str(
             r#"

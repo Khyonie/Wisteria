@@ -194,4 +194,25 @@ mod tests {
         assert_eq!(release_asset_filename("library"), "library.jar");
         assert_eq!(release_asset_filename("library.jar"), "library.jar");
     }
+
+    #[test]
+    fn resolve_with_explicit_tag_and_no_update_returns_cache_path_without_network() {
+        let paths = resolve(
+            "Owner",
+            "Repository",
+            "Repository",
+            Some(&String::from("v1.0.0")),
+            &GithubReleaseType::Release,
+            &UpdatePolicy::Never,
+            &UpdateContext::ResolveOnly,
+        )
+        .unwrap();
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(
+                ".wisteria/cache/Owner/Repository/v1.0.0/Repository.jar"
+            )]
+        );
+    }
 }

@@ -15,12 +15,12 @@ pub mod update;
 
 pub(crate) fn print_header() {
     println!("Wisteria v{}", consts::VERSION);
-    println!("Copyright © 2025 Hailey-Jane \"Khyonie\" Veverka <http://www.khyonieheart.coffee/>");
+    println!("Copyright © 2026 Hailey-Jane \"Khyonie\" Garrett <http://www.khyonieheart.coffee/>");
 }
 
 pub(crate) fn envvar_regexes() -> HashMap<&'static str, Regex> {
     let mut regexes: HashMap<&str, Regex> = HashMap::new();
-    regexes.insert("envvars", Regex::new(r#"\{(.+)}"#).unwrap());
+    regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
     regexes
 }
 
@@ -41,20 +41,25 @@ pub(crate) fn update_dependencies_with_context(
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
     let size = targets.len();
     for (index, target) in targets.iter().enumerate() {
-        if let Some((name, dep)) = dependencies.get_key_value(target) {
-            print!(
-                "({}/{size}) Updating {:width$}",
-                index + 1,
-                format!("{name} ... ")
-            );
-            let _ = match dep.resolve(name, environment, regexes, context) {
-                Ok(p) => p,
-                Err(e) => {
-                    println!("Could not download {name}: {}", e.0);
-                    failed_downloads.push((name.clone(), e.0));
-                    continue;
-                }
-            };
+        match dependencies.get_key_value(target) {
+            Some((name, dep)) => {
+                print!(
+                    "({}/{size}) Updating {:width$}",
+                    index + 1,
+                    format!("{name} ... ")
+                );
+                let _ = match dep.resolve(name, environment, regexes, context) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        println!("Could not download {name}: {}", e.0);
+                        failed_downloads.push((name.clone(), e.0));
+                        continue;
+                    }
+                };
+            },
+            None => {
+                println!("Usage of undeclared dependency \"{target}\"");
+            }
         }
     }
 

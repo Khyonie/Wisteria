@@ -43,3 +43,37 @@ fn collect_files_recursive(path: &Path, extension: &str, files: &mut Vec<PathBuf
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use std::fs;
+
+    #[test]
+    fn collect_files_with_extension_recurses_and_filters_by_extension() {
+        let temp = TempDir::new("collect-files");
+        fs::create_dir_all(temp.path().join("src/nested")).unwrap();
+        fs::write(temp.path().join("src/Main.java"), "").unwrap();
+        fs::write(temp.path().join("src/nested/Other.java"), "").unwrap();
+        fs::write(temp.path().join("src/nested/notes.txt"), "").unwrap();
+
+        let mut files = collect_files_with_extension(&temp.path().join("src"), "java");
+        files.sort();
+
+        assert_eq!(
+            files,
+            vec![
+                temp.path().join("src/Main.java"),
+                temp.path().join("src/nested/Other.java"),
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_files_with_extension_returns_empty_for_missing_path() {
+        let temp = TempDir::new("collect-files-missing");
+
+        assert!(collect_files_with_extension(&temp.path().join("missing"), "java").is_empty());
+    }
+}

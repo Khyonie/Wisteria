@@ -67,3 +67,71 @@ fn resolve_os_var(unix: &str, windows: &str) -> Option<String> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{with_current_dir, TempDir};
+
+    fn regexes() -> HashMap<&'static str, Regex> {
+        let mut regexes = HashMap::new();
+        regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
+        regexes
+    }
+
+    fn environment() -> HashMap<String, String> {
+        HashMap::from([
+            (String::from("project_name"), String::from("Demo")),
+            (String::from("configuration"), String::from("main")),
+            (String::from("version"), String::from("1.2.3")),
+        ])
+    }
+
+    #[test]
+    fn resolves_project_environment_placeholders() {
+        assert_eq!(
+            resolve_filepath(
+                "target/{configuration}/{project_name}-{version}.jar",
+                &environment(),
+                &regexes(),
+            )
+            .unwrap(),
+            "target/main/Demo-1.2.3.jar"
+        );
+    }
+
+    #[test]
+    fn fails_on_unknown_environment_placeholder() {
+        let error = resolve_filepath("target/{missing}.jar", &environment(), &regexes())
+            .unwrap_err();
+
+        assert!(error.0.contains("undefined environmental variable"));
+        assert_eq!(error.1, 61);
+    }
+
+    #[test]
+    fn expands_dot_relative_paths_from_current_directory() {
+        let temp = TempDir::new("paths-relative");
+
+        with_current_dir(temp.path(), || {
+            let resolved = resolve_filepath("./target/app.jar", &environment(), &regexes())
+                .unwrap();
+
+            assert_eq!(
+                resolved,
+                temp.path().join("target/app.jar").to_string_lossy().to_string()
+            );
+        });
+    }
+
+    #[test]
+    fn ensure_parents_creates_missing_parent_directories() {
+        let temp = TempDir::new("paths-parents");
+        let target = temp.path().join("a/b/c.jar");
+
+        let parent = ensure_parents(&target.to_string_lossy()).unwrap();
+
+        assert_eq!(parent, temp.path().join("a/b"));
+        assert!(parent.exists());
+    }
+}
