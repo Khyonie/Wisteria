@@ -28,7 +28,14 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn from(project_file: Option<String>, flags: StartupFlags) -> Result<Self, (String, u8)> {
+    pub fn from(project_file: Option<String>) -> Result<Self, (String, u8)> {
+        Self::from_with_flags(project_file, StartupFlags::default())
+    }
+
+    pub fn from_with_flags(
+        project_file: Option<String>,
+        flags: StartupFlags,
+    ) -> Result<Self, (String, u8)> {
         let project_toml_string =
             read_to_string(project_file.unwrap_or(String::from(consts::PROJECT_FILE)))
                 .map_err(|e| (format!("{e}"), 1))?;

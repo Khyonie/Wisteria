@@ -1,6 +1,9 @@
 use std::{fs, path::PathBuf, process::exit};
 
+use crate::generators::generate_metadata;
+use crate::model::Metadata;
 use crate::util::consts;
+use crate::workspace::nature::Nature;
 
 pub fn trigger_clean(args: &[String]) {
     match args[2].to_lowercase().as_str() {
@@ -31,7 +34,7 @@ pub fn trigger_clean(args: &[String]) {
             }
         }
         "metadata" => {
-            let _ = fs::write(".wisteria/metadata.toml", generate_metadata(&Metadata::default()));
+            let _ = fs::write(consts::METADATA_FILE, generate_metadata(&Metadata::default()));
             println!("Operation complete.");
             exit(0)
         }
@@ -53,7 +56,7 @@ pub fn trigger_clean(args: &[String]) {
         }
         _ => {
             println!("Unknown clean target {}", args[2]);
-            println!("Valid clean targets: one of [ work, metadata, natures, target, all ]");
+            println!("Valid clean targets: one of [ classes, dependencies, metadata, natures ]");
             exit(1)
         }
     }

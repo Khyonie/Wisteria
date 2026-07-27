@@ -11,16 +11,22 @@ pub struct StartupFlags {
     pub passed_args: Vec<String>
 }
 
+impl Default for StartupFlags {
+    fn default() -> Self {
+        Self {
+            minimal: false,
+            use_project: None,
+            no_refresh: false,
+            passed_args: Vec::new(),
+        }
+    }
+}
+
 /// Takes the arguments passed into the program and turns them into arguments and flags.
 pub fn load_arguments(args: &mut Vec<String>) -> StartupFlags {
     let raw_args: Vec<String> = env::args().collect();
 
-    let mut flags: StartupFlags = StartupFlags {
-        minimal: false,
-        use_project: None,
-        no_refresh: false,
-        passed_args: Vec::new()
-    };
+    let mut flags: StartupFlags = StartupFlags::default();
     let mut args_iter = raw_args.iter();
 
     let mut passed = false;

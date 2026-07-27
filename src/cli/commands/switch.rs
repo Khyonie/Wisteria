@@ -6,7 +6,7 @@ use crate::dependency::UpdateContext;
 use crate::generators::generate_metadata;
 use crate::model::{Configuration, Metadata, Project};
 use crate::util::consts;
-use crate::workspace::nature::Nature;
+use crate::workspace::refresh::refresh;
 
 pub fn trigger_switch(
     project: Result<Project, (String, u8)>,

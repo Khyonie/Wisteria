@@ -1,9 +1,10 @@
-use std::{collections::HashMap, process::Command};
-
-use regex::Regex;
+use std::process::Command;
 
 use crate::{
-    build::{compile, resolve::resolve_dependencies, shade, sources}, cli::args::StartupFlags, model::{Configuration, Project, ProjectInfo}, project::TaskRunner, util::consts
+    cli::args::StartupFlags,
+    model::{Configuration, Project, ProjectInfo},
+    project::{ImplicitBuildTask, TaskRunner},
+    util::consts,
 };
 
 pub struct ImplicitRunTask {
@@ -18,6 +19,7 @@ impl ImplicitRunTask {
                 String::from("collect"),
                 String::from("compile"),
                 String::from("shade"),
+                String::from("package"),
                 String::from("run"),
             ],
             flags
@@ -29,11 +31,11 @@ impl TaskRunner for ImplicitRunTask
 {
     fn invoke(
         &self,
-        _info: &ProjectInfo,
+        info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
     ) -> Result<(), (String, u8)> {
-        self.build(project, configuration)?;
+        ImplicitBuildTask::new().invoke(info, project, configuration)?;
 
         self.run()
     }
@@ -45,24 +47,6 @@ impl TaskRunner for ImplicitRunTask
 
 impl ImplicitRunTask
 {
-    fn build(&self, project: &Project, configuration: &Configuration) -> Result<(), (String, u8)>
-    {
-        let mut regexes: HashMap<&str, Regex> = HashMap::new();
-        regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
-
-        let dependencies = resolve_dependencies(project, configuration, &regexes)?;
-        let copied_files = sources::collect_sources(configuration)?;
-
-        compile::compile_sources(
-            configuration,
-            copied_files,
-            dependencies.classpath().as_deref(),
-        )?;
-        shade::shade_jars(&dependencies.shaded_jars())?;
-
-        Ok(())
-    }
-
     fn run(&self) -> Result<(), (String, u8)>
     {
         let mut java_command = Command::new("java");

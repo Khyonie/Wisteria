@@ -25,12 +25,6 @@ impl ImplicitBuildTask {
     }
 }
 
-impl ImplicitBuildTask {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
 impl TaskRunner for ImplicitBuildTask {
     fn invoke(
         &self,

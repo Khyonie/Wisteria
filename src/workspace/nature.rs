@@ -27,33 +27,33 @@ impl Nature {
     ) -> Result<(), String> {
         match self {
             Nature::Eclipse => {
-                create_dir_all(".settings/").map_err(| e | format!("{e}"))?;
+                create_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(| e | format!("{e}"))?;
                 write(
-                    ".settings/org.eclipse.jdt.core.prefs",
+                    consts::ECLIPSE_JDT_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_eclipse_config(configuration)),
                 ).map_err(| e | format!("{e}"))?;
                 write(
-                    ".settings/org.eclipse.m2e.core.prefs",
+                    consts::ECLIPSE_M2E_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
                 ).map_err(| e | format!("{e}"))?;
 
-                write(".project", eclipse::generate_project(project)?).map_err(| e | format!("{e}"))?;
+                write(consts::ECLIPSE_PROJECT_FILE, eclipse::generate_project(project)?).map_err(| e | format!("{e}"))?;
 
                 write(
-                    ".classpath",
+                    consts::ECLIPSE_CLASSPATH_FILE,
                     eclipse::generate_classpath(project, configuration, regexes)?,
                 ).map_err(| e | format!("{e}"))?;
 
                 Ok(())
             }
             Nature::Maven => {
-                create_dir_all(".settings/").map_err(| e | format!("{e}"))?;
+                create_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(| e | format!("{e}"))?;
                 write(
-                    ".settings/org.eclipse.m2e.core.prefs",
+                    consts::ECLIPSE_M2E_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
                 ).map_err(| e | format!("{e}"))?;
                 write(
-                    "pom.xml",
+                    consts::MAVEN_POM_FILE,
                     maven::generate_pom(project, configuration)?,
                 ).map_err(| e | format!("{e}"))?;
 
@@ -65,30 +65,30 @@ impl Nature {
     pub fn remove_nature(&self) -> Result<(), String> {
         match self {
             Self::Eclipse => {
-                 if let Err(e) = remove_dir_all(".settings") {
+                 if let Err(e) = remove_dir_all(consts::ECLIPSE_SETTINGS_DIR) {
                     if e.kind() != ErrorKind::NotFound {
                         return Err(format!("{e}"))
                     }
                 }
-                if let Err(e) = remove_file(".classpath") {
+                if let Err(e) = remove_file(consts::ECLIPSE_CLASSPATH_FILE) {
                     if e.kind() != ErrorKind::NotFound {
                         return Err(format!("{e}"))
                     }
                 }
 
-                if let Err(e) = remove_file(".project") {
+                if let Err(e) = remove_file(consts::ECLIPSE_PROJECT_FILE) {
                     if e.kind() != ErrorKind::NotFound {
                         return Err(format!("{e}"))
                     }
                 }
             }
             Self::Maven => {
-                if let Err(e) = remove_file("pom.xml") {
+                if let Err(e) = remove_file(consts::MAVEN_POM_FILE) {
                     if e.kind() != ErrorKind::NotFound {
                         return Err(format!("{e}"))
                     }
                 }
-                if let Err(e) = remove_file(".settings/org.eclipse.m2e.core.prefs") {
+                if let Err(e) = remove_file(consts::ECLIPSE_M2E_PREFS_FILE) {
                     if e.kind() != ErrorKind::NotFound {
                         return Err(format!("{e}"))
                     }

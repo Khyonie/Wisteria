@@ -42,11 +42,13 @@ For a configuration to be valid for building, it must define `sources` and `targ
 ### Build and run the current project configuration
 `-$ wisteria3 run`
 
-Like build, this compiles all .java source files defined in the current project configuration. However, no targets are written to.
+Like build, this compiles all .java source files defined in the current project configuration. The program is then executed.
 
 - To pass command-line JVM arguments to the program, write `--` as an argument. Any arguments written after will be passed to the program as-is.
 
 Example: `-$ wisteria3 run -- -Xms4g -Xmx8g`
+
+For a configuration te be valid for running, it must define `sources` and `entry`.
 
 ### Switch the project configuration
 `-$ wisteria switch <configuration>`

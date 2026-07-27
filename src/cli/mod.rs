@@ -8,7 +8,8 @@ pub mod commands;
 pub fn run() {
     let mut args: Vec<String> = Vec::new();
     let flags = args::load_arguments(&mut args);
-    let project: Result<Project, (String, u8)> = Project::from(flags.use_project.clone(), flags.clone());
+    let project: Result<Project, (String, u8)> =
+        Project::from_with_flags(flags.use_project.clone(), flags.clone());
 
     match args[1].to_lowercase().as_str() {
         "refresh" => commands::refresh::trigger_refresh(project),

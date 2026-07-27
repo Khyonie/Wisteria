@@ -340,6 +340,7 @@ fn inherit_vec<T: Clone + Eq>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::args::StartupFlags;
     use crate::java::compiler_flags::CompilerFlags;
 
     fn table(toml: &str) -> Table {
@@ -445,7 +446,7 @@ mod tests {
         )
         .unwrap();
 
-        configuration.apply_implicit();
+        configuration.apply_implicit(StartupFlags::default());
 
         let build = configuration.tasks().get("build").unwrap();
         assert_eq!(
