@@ -3,8 +3,12 @@ use std::{collections::HashMap, fs::read_to_string};
 use toml::Table;
 
 use crate::{
-    cli::args::StartupFlags, config::toml_utils, dependency::Dependency, model::Configuration,
-    util::consts, workspace::nature::Nature
+    cli::args::StartupFlags,
+    config::toml_utils,
+    dependency::{load_dependency_map, migrate_legacy_dependency_table, Dependency},
+    model::Configuration,
+    util::consts,
+    workspace::nature::Nature,
 };
 
 /// Collection of identifying information for a project.
@@ -40,9 +44,10 @@ impl Project {
             read_to_string(project_file.unwrap_or(String::from(consts::PROJECT_FILE)))
                 .map_err(|e| (format!("{e}"), 1))?;
 
-        let project_toml: Table = project_toml_string
+        let mut project_toml: Table = project_toml_string
             .parse::<Table>()
             .map_err(|e| (format!("Could not read {}: {e}", consts::PROJECT_FILE), 1))?;
+        migrate_legacy_dependency_table(&mut project_toml)?;
 
         let toml = project_toml.get("project").unwrap().as_table().unwrap();
         let configuration_map = project_toml.get("configuration");
@@ -128,32 +133,7 @@ impl Project {
             },
         };
 
-        let dependencies: HashMap<String, Dependency> = match dependencies_map {
-            Some(v) if v.is_table() => {
-                let v = v.as_table().unwrap();
-                let mut dependencies: HashMap<String, Dependency> = HashMap::new();
-
-                for (name, t) in v {
-                    match t.as_table()
-                    {
-                        Some(t) => dependencies.insert(name.clone(), Dependency::load(t)?),
-                        None => return Err((format!("Mismatched type for dependency \"{name}\", expected a table, found {}", t.type_str()), 16))
-                    };
-                }
-
-                dependencies
-            }
-            Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for \"dependencies\", expected a table, found {}",
-                        v.type_str()
-                    ),
-                    16,
-                ))
-            }
-            None => HashMap::new(),
-        };
+        let dependencies: HashMap<String, Dependency> = load_dependency_map(dependencies_map)?;
 
         Ok(Project { info, dependencies })
     }
@@ -285,6 +265,7 @@ mod tests {
             sourcepage = "https://github.com/Example/Demo"
             natures = [ "eclipse", "maven" ]
 
+            # This legacy dependency shape should still load through migration.
             [dependencies]
             github = { type = "fetchFromGithub", repository = "Example/Library" }
             local = { type = "loadArchive", path = "lib/local.jar" }
@@ -302,7 +283,10 @@ mod tests {
         assert_eq!(project.info().description(), "Demo project");
         assert_eq!(project.info().authors(), &["Alice", "Bob"]);
         assert_eq!(project.info().license(), &["MIT"]);
-        assert_eq!(project.info().homepage().map(String::as_str), Some("https://example.com"));
+        assert_eq!(
+            project.info().homepage().map(String::as_str),
+            Some("https://example.com")
+        );
         assert_eq!(
             project.info().sourcepage().map(String::as_str),
             Some("https://github.com/Example/Demo")
@@ -327,6 +311,42 @@ mod tests {
 
         let configuration = project.info().configurations().get("main").unwrap();
         assert!(configuration.tasks().contains_key("build"));
+    }
+
+    #[test]
+    fn loads_grouped_dependency_tables() {
+        let temp = TempDir::new("project-load-grouped-dependencies");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.2.3"
+            description = "Demo project"
+
+            [dependencies.github]
+            github = { repository = "Example/Library" }
+
+            [dependencies.maven]
+            maven = { group_id = "com.example", artifact_id = "library" }
+
+            [configuration.main]
+            sources = [ "src/" ]
+            dependencies = [ "github", "maven" ]
+            targets = [ "target/demo.jar" ]
+            "#,
+        );
+
+        let project = Project::from(Some(project_file)).unwrap();
+
+        assert!(matches!(
+            project.dependencies().get("github").unwrap(),
+            Dependency::FetchFromGithub { .. }
+        ));
+        assert!(matches!(
+            project.dependencies().get("maven").unwrap(),
+            Dependency::FetchFromMaven { .. }
+        ));
     }
 
     #[test]
@@ -363,7 +383,10 @@ mod tests {
             child.dependencies().unwrap(),
             &vec![String::from("child-dep"), String::from("base-dep")]
         );
-        assert_eq!(child.targets().unwrap(), &vec![String::from("target/base.jar")]);
+        assert_eq!(
+            child.targets().unwrap(),
+            &vec![String::from("target/base.jar")]
+        );
         assert!(child.tasks().contains_key("build"));
     }
 

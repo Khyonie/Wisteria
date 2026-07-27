@@ -13,7 +13,8 @@ description = "An example of a project file."
 natures = [ "eclipse", "maven" ] 
 
 # Dependencies to be made available to configurations.
-[dependencies]
+[dependencies.maven]
+gson = { group_id = "com.google.code.gson", artifact_id = "gson" }
 
 # Configurations define where to find source files, what dependencies to
 # include, where to write completed builds, among other options.
@@ -40,13 +41,13 @@ Compiles all .java source files inside the source folder(s) defined in the curre
 For a configuration to be valid for building, it must define `sources` and `targets`. Additionally if `entry` is specified, the resulting .jar file will be executable.
 
 ### Build and run the current project configuration
-`-$ wisteria3 run`
+`-$ wisteria run`
 
 Like build, this compiles all .java source files defined in the current project configuration. The program is then executed.
 
 - To pass command-line JVM arguments to the program, write `--` as an argument. Any arguments written after will be passed to the program as-is.
 
-Example: `-$ wisteria3 run -- -Xms4g -Xmx8g`
+Example: `-$ wisteria run -- -Xms4g -Xmx8g`
 
 For a configuration te be valid for running, it must define `sources` and `entry`.
 
@@ -67,9 +68,17 @@ Applicable dependencies may be updated with this action as well.
 ### Update dependencies
 `-$ wisteria update [dependency | all]`
 
-Downloads a specific Maven or Github dependency as defined in the `[dependencies]` section of `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
+Downloads a specific Maven or Github dependency as defined under a `[dependencies.<source>]` table in `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
 
 If "all" is specified as the dependency, all applicable dependencies will be updated.
+
+### Migrate a Wisteria 2 project
+`-$ wisteria migrate wisteria2`
+
+Converts a Wisteria 2 `project.toml` to the current format in place. Before writing the converted file, Wisteria writes a backup next to it using a name like `project.toml.wisteria2.bak`. If that backup already exists, the next available numbered backup is used.
+
+The converter maps v2 `project.libraries` entries to local dependency groups, maps each `[task.<name>]` table to `[configuration.<name>]`, and converts common javac `arguments` into structured `compiler_flags` when possible. Use `--project <project file>` to migrate a project file with a different path.
+
 ## project.toml:
 Projects are defined inside of a `project.toml` file at the root of the project hierarchy.
 
@@ -78,33 +87,39 @@ Contains basic information about your project, such as the name, version, and de
 
 Also found here are a project's `natures`, which are "eclipse" and "maven" by default. Natures define what environments a project should be compatible with.
 
-### `[dependencies]`
-Declares the dependencies in use by your project and exposes them to be used by a configuration. Dependency declarations define the way Wisteria should attempt to locate the file and include it on the classpath.
+### `[dependencies.<source>]`
+Declares the dependencies in use by your project and exposes them to be used by a configuration. Dependency declarations are grouped by source type, and each dependency can then be referenced by name from a configuration.
 ```toml
-[dependencies]
+[dependencies.archive]
 # Resolves the specified file
-local-library = { type = "loadArchive", path = "path/to/library.jar" }
+local-library = { path = "path/to/library.jar" }
 
+[dependencies.folder]
 # Adds all .jar files inside the given directory
-project-libraries = { type = "loadArchive", path = "lib/", recursive = true }
+project-libraries = { path = "lib/", recursive = true }
 
+[dependencies.url]
 # Downloads a file from a URL
-remote-library = { type = "fetchFromUrl", url = "https://lib.example.com/snapshots/libexample.jar" }
+remote-library = { url = "https://lib.example.com/snapshots/libexample.jar" }
 
+[dependencies.maven]
 # Downloads a file from Maven central (or another repository)
 # If "version" is not specified, the latest stable version is downloaded
-maven-library = { type = "fetchFromMaven", group_id = "com.example", artifact_id = "libexample" }
+maven-library = { group_id = "com.example", artifact_id = "libexample" }
 
+[dependencies.github]
 # Downloads a release asset from a Github repository
 # If "tag" is not specified, the latest non-prerelease tag asset is downloaded
-github-library = { type = "fetchFromGithub", username = "Example", repository = "LibExample" }
+github-library = { username = "Example", repository = "LibExample" }
 
 # Use a pinned release tag
-pinned-github-library = { type = "fetchFromGithub", username = "Example", repository = "LibExample", tag = "v1.2.3" }
+pinned-github-library = { username = "Example", repository = "LibExample", tag = "v1.2.3" }
 
 # Or opt into prerelease tags when "tag" is omitted
-preview-github-library = { type = "fetchFromGithub", username = "Example", repository = "LibExample", release_type = "prerelease" }
+preview-github-library = { username = "Example", repository = "LibExample", release_type = "prerelease" }
 ```
+
+Recognized dependency groups are `archive`, `folder`, `url`, `maven`, `github`, `local_repository`, and `script`. Legacy flat dependency declarations with `type = "..."` are migrated in memory while loading, but new project files should use grouped tables.
 
 ### `[configuration.<config>]`
 Defines the workspace settings that make up how a project should be interacted with and built.

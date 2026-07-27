@@ -1,4 +1,6 @@
-use toml::Table;
+use std::collections::HashMap;
+
+use toml::{Table, Value};
 
 use crate::config::toml_utils;
 use crate::dependency::{Dependency, GithubReleaseType, UpdatePolicy};
@@ -77,10 +79,8 @@ impl Dependency {
                             Err(_) if !toml.contains_key("username") => None,
                             Err(e) => return Err(e),
                         };
-                        let (username, repository) = github_owner_and_repository(
-                            username,
-                            repository,
-                        )?;
+                        let (username, repository) =
+                            github_owner_and_repository(username, repository)?;
                         let tag: Option<String> = toml_utils::read_string("tag", toml).ok();
                         let release_type = GithubReleaseType::load(
                             &toml_utils::read_string("release_type", toml)
@@ -127,6 +127,266 @@ impl Dependency {
             )),
         }
     }
+
+    pub fn load_from_group(group: &str, toml: &Table) -> Result<Dependency, (String, u8)> {
+        let dependency_type = dependency_type_for_group(group)?;
+        let mut toml = toml.clone();
+
+        if let Some(existing_type) = toml.get("type") {
+            match existing_type.as_str() {
+                Some(existing_type) if existing_type == dependency_type => {}
+                Some(existing_type) => {
+                    return Err((
+                        format!(
+                            "Dependency in group \"{group}\" has mismatched type \"{existing_type}\", expected \"{dependency_type}\""
+                        ),
+                        32,
+                    ))
+                }
+                None => {
+                    return Err((
+                        format!(
+                            "Mismatched type for dependency type in group \"{group}\", expected a string, found {}",
+                            existing_type.type_str()
+                        ),
+                        32,
+                    ))
+                }
+            }
+        } else {
+            toml.insert(
+                String::from("type"),
+                Value::String(dependency_type.to_string()),
+            );
+        }
+
+        Dependency::load(&toml)
+    }
+}
+
+pub fn load_dependency_map(
+    dependencies_map: Option<&Value>,
+) -> Result<HashMap<String, Dependency>, (String, u8)> {
+    let Some(dependencies_map) = dependencies_map else {
+        return Ok(HashMap::new());
+    };
+
+    let Some(dependencies_table) = dependencies_map.as_table() else {
+        return Err((
+            format!(
+                "Mismatched type for \"dependencies\", expected a table, found {}",
+                dependencies_map.type_str()
+            ),
+            16,
+        ));
+    };
+
+    let mut dependencies: HashMap<String, Dependency> = HashMap::new();
+
+    for (key, value) in dependencies_table {
+        let Some(table) = value.as_table() else {
+            return Err((
+                format!(
+                    "Mismatched type for dependency group or dependency \"{key}\", expected a table, found {}",
+                    value.type_str()
+                ),
+                16,
+            ));
+        };
+
+        if table.contains_key("type") {
+            insert_dependency(&mut dependencies, key, Dependency::load(table)?)?;
+            continue;
+        }
+
+        if dependency_type_for_group(key).is_err() {
+            return Err((
+                format!(
+                    "Unknown dependency group \"{key}\". Expected one of [archive, folder, url, maven, github, local_repository, script]"
+                ),
+                31,
+            ));
+        }
+
+        for (dependency_name, dependency_value) in table {
+            let Some(dependency_table) = dependency_value.as_table() else {
+                return Err((
+                    format!(
+                        "Mismatched type for dependency \"{dependency_name}\" in group \"{key}\", expected a table, found {}",
+                        dependency_value.type_str()
+                    ),
+                    16,
+                ));
+            };
+
+            insert_dependency(
+                &mut dependencies,
+                dependency_name,
+                Dependency::load_from_group(key, dependency_table)?,
+            )?;
+        }
+    }
+
+    Ok(dependencies)
+}
+
+pub fn migrate_legacy_dependency_table(project_toml: &mut Table) -> Result<bool, (String, u8)> {
+    let Some(dependencies_value) = project_toml.get_mut("dependencies") else {
+        return Ok(false);
+    };
+
+    let Some(dependencies_table) = dependencies_value.as_table_mut() else {
+        return Err((
+            format!(
+                "Mismatched type for \"dependencies\", expected a table, found {}",
+                dependencies_value.type_str()
+            ),
+            16,
+        ));
+    };
+
+    let old_dependencies = std::mem::take(dependencies_table);
+    let mut new_dependencies = Table::new();
+    let mut migrated = false;
+
+    for (key, value) in old_dependencies {
+        let Some(table) = value.as_table() else {
+            new_dependencies.insert(key, value);
+            continue;
+        };
+
+        let Some(dependency_type_value) = table.get("type") else {
+            if dependency_type_for_group(&key).is_ok() {
+                merge_dependency_group(&mut new_dependencies, key, table.clone())?;
+            } else {
+                new_dependencies.insert(key, value);
+            }
+            continue;
+        };
+
+        let Some(dependency_type) = dependency_type_value.as_str() else {
+            return Err((
+                format!(
+                    "Mismatched type for dependency type in \"{key}\", expected a string, found {}",
+                    dependency_type_value.type_str()
+                ),
+                32,
+            ));
+        };
+
+        let group = group_for_dependency_type(dependency_type)?;
+        let mut migrated_dependency = table.clone();
+        migrated_dependency.remove("type");
+        insert_grouped_dependency(
+            &mut new_dependencies,
+            group,
+            key,
+            Value::Table(migrated_dependency),
+        )?;
+        migrated = true;
+    }
+
+    *dependencies_table = new_dependencies;
+    Ok(migrated)
+}
+
+fn insert_dependency(
+    dependencies: &mut HashMap<String, Dependency>,
+    name: &str,
+    dependency: Dependency,
+) -> Result<(), (String, u8)> {
+    if dependencies.insert(name.to_string(), dependency).is_some() {
+        return Err((format!("Duplicate dependency name \"{name}\""), 33));
+    }
+
+    Ok(())
+}
+
+fn merge_dependency_group(
+    dependencies_table: &mut Table,
+    group: String,
+    dependency_group: Table,
+) -> Result<(), (String, u8)> {
+    for (dependency_name, dependency_value) in dependency_group {
+        insert_grouped_dependency(
+            dependencies_table,
+            &group,
+            dependency_name,
+            dependency_value,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn insert_grouped_dependency(
+    dependencies_table: &mut Table,
+    group: &str,
+    dependency_name: String,
+    dependency_value: Value,
+) -> Result<(), (String, u8)> {
+    if !matches!(dependency_value, Value::Table(_)) {
+        return Err((
+            format!(
+                "Mismatched type for dependency \"{dependency_name}\" in group \"{group}\", expected a table, found {}",
+                dependency_value.type_str()
+            ),
+            16,
+        ));
+    }
+
+    if !dependencies_table.contains_key(group) {
+        dependencies_table.insert(group.to_string(), Value::Table(Table::new()));
+    }
+
+    let group_value = dependencies_table.get_mut(group).unwrap();
+    let Some(group_table) = group_value.as_table_mut() else {
+        return Err((
+            format!(
+                "Mismatched type for dependency group \"{group}\", expected a table, found {}",
+                group_value.type_str()
+            ),
+            16,
+        ));
+    };
+
+    if group_table
+        .insert(dependency_name.clone(), dependency_value)
+        .is_some()
+    {
+        return Err((
+            format!("Duplicate dependency name \"{dependency_name}\""),
+            33,
+        ));
+    }
+
+    Ok(())
+}
+
+fn dependency_type_for_group(group: &str) -> Result<&'static str, (String, u8)> {
+    match group {
+        "archive" | "loadArchive" => Ok("loadArchive"),
+        "folder" | "loadFolder" => Ok("loadFolder"),
+        "url" | "fetchFromUrl" => Ok("fetchFromUrl"),
+        "maven" | "fetchFromMaven" => Ok("fetchFromMaven"),
+        "github" | "fetchFromGithub" => Ok("fetchFromGithub"),
+        "local_repository" | "localRepository" => Ok("localRepository"),
+        "script" | "buildFromScript" => Ok("buildFromScript"),
+        _ => Err((format!("Unknown dependency group \"{group}\""), 31)),
+    }
+}
+
+fn group_for_dependency_type(dependency_type: &str) -> Result<&'static str, (String, u8)> {
+    match dependency_type {
+        "loadArchive" => Ok("archive"),
+        "loadFolder" => Ok("folder"),
+        "fetchFromUrl" => Ok("url"),
+        "fetchFromMaven" => Ok("maven"),
+        "fetchFromGithub" => Ok("github"),
+        "localRepository" => Ok("local_repository"),
+        "buildFromScript" => Ok("script"),
+        _ => Err((format!("Unknown dependency type \"{dependency_type}\""), 31)),
+    }
 }
 
 fn github_owner_and_repository(
@@ -160,6 +420,104 @@ mod tests {
 
     fn load_dependency(toml: &str) -> Dependency {
         Dependency::load(&toml.parse::<Table>().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn grouped_dependency_map_loads_maven_and_github_dependencies() {
+        let toml = r#"
+            [maven]
+            gson = { group_id = "com.google.code.gson", artifact_id = "gson" }
+
+            [github]
+            lilac = { repository = "Khyonie/Lilac" }
+            "#;
+        let table = toml.parse::<Table>().unwrap();
+        let dependencies = load_dependency_map(Some(&Value::Table(table))).unwrap();
+
+        match dependencies.get("gson").unwrap() {
+            Dependency::FetchFromMaven {
+                group_id,
+                artifact_id,
+                ..
+            } => {
+                assert_eq!(group_id, "com.google.code.gson");
+                assert_eq!(artifact_id, "gson");
+            }
+            _ => panic!("expected Maven dependency"),
+        }
+
+        match dependencies.get("lilac").unwrap() {
+            Dependency::FetchFromGithub {
+                username,
+                repository,
+                ..
+            } => {
+                assert_eq!(username, "Khyonie");
+                assert_eq!(repository, "Lilac");
+            }
+            _ => panic!("expected GitHub dependency"),
+        }
+    }
+
+    #[test]
+    fn migrates_legacy_flat_dependencies_to_grouped_tables() {
+        let mut project = r#"
+            [dependencies]
+            gson = { type = "fetchFromMaven", group_id = "com.google.code.gson", artifact_id = "gson" }
+            lilac = { type = "fetchFromGithub", repository = "Khyonie/Lilac" }
+            local = { type = "loadArchive", path = "lib/local.jar" }
+            "#
+        .parse::<Table>()
+        .unwrap();
+
+        assert!(migrate_legacy_dependency_table(&mut project).unwrap());
+
+        let dependencies = project.get("dependencies").unwrap().as_table().unwrap();
+        assert!(dependencies
+            .get("maven")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .contains_key("gson"));
+        assert!(dependencies
+            .get("github")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .contains_key("lilac"));
+        assert!(dependencies
+            .get("archive")
+            .unwrap()
+            .as_table()
+            .unwrap()
+            .contains_key("local"));
+        assert!(dependencies.get("type").is_none());
+
+        let loaded = load_dependency_map(project.get("dependencies")).unwrap();
+        assert!(matches!(
+            loaded.get("gson").unwrap(),
+            Dependency::FetchFromMaven { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_dependency_names_across_groups() {
+        let toml = r#"
+            [maven]
+            library = { group_id = "com.example", artifact_id = "library" }
+
+            [github]
+            library = { repository = "Example/Library" }
+            "#;
+        let table = toml.parse::<Table>().unwrap();
+
+        let error = match load_dependency_map(Some(&Value::Table(table))) {
+            Ok(_) => panic!("expected duplicate dependency name to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Duplicate dependency name"));
+        assert_eq!(error.1, 33);
     }
 
     #[test]

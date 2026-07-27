@@ -1,5 +1,6 @@
 pub mod configuration;
 pub mod metadata;
+pub mod migration;
 pub mod project;
 
 pub use configuration::Configuration;

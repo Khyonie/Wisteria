@@ -2,7 +2,7 @@ use std::env::consts;
 
 pub const VERSION: &str = "3.4.0";
 
-pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch > 
+pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | migrate > 
     (tasks...)
         Runs the specified tasks, in order, and at least one task must be given
 
@@ -18,6 +18,8 @@ pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | up
         Displays project information in a human-friendly format
     switch <configuration>
         Switches the current project configuration and configures the project environment
+    migrate wisteria2
+        Converts a Wisteria 2 project.toml to the current format and writes a backup first
 
 Flags:
     --norefresh
@@ -30,6 +32,7 @@ Flags:
         Uses a specific project file"#;
 
 pub const PROJECT_FILE: &str = "project.toml";
+pub const WISTERIA2_BACKUP_EXTENSION: &str = "wisteria2.bak";
 
 pub const WISTERIA_DIR: &str = ".wisteria";
 pub const METADATA_FILE: &str = ".wisteria/metadata.toml";
