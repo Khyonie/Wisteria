@@ -2,6 +2,7 @@ use std::{fs, fs::File, path::PathBuf};
 
 use zip::ZipArchive;
 
+use crate::util::consts;
 use crate::workspace::files;
 
 pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), (String, u8)> {
@@ -26,14 +27,14 @@ pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), (String, u8)> {
             }
         };
 
-        let shaded_jar_path = PathBuf::from(".wisteria/work/shaded/");
+        let shaded_jar_path = PathBuf::from(consts::SHADED_OUT_PATH);
         if !shaded_jar_path.exists() {
             if let Err(e) = fs::create_dir_all(&shaded_jar_path) {
                 return Err((format!("Could not create shaded work folder: {e}"), 1));
             }
         }
 
-        if let Err(e) = archive.extract(".wisteria/work/shaded/") {
+        if let Err(e) = archive.extract(consts::SHADED_OUT_PATH) {
             return Err((
                 format!("Could not extract {}: {e}", shaded.to_string_lossy()),
                 1,

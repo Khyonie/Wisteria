@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use crate::model::Configuration;
+use crate::{model::Configuration, util::consts};
 
 pub fn compile_sources(
     configuration: &Configuration,
@@ -8,8 +8,8 @@ pub fn compile_sources(
     classpath: Option<&str>,
 ) -> Result<(), (String, u8)> {
     let mut javac_command: Command = Command::new("javac");
-    javac_command.args(["-d", "./.wisteria/work/bin/"]);
-    javac_command.args(["--source-path", ".wisteria/work/src/"]);
+    javac_command.args(["-d", consts::BINARY_OUT_PATH]);
+    javac_command.args(["--source-path", consts::SOURCE_OUT_PATH]);
 
     if let Some(deps) = classpath {
         javac_command.args(["--class-path", deps]);
@@ -33,12 +33,15 @@ pub fn compile_sources(
             }
 
             if !out.stderr.is_empty() {
-                let stderr = String::from_utf8(out.stderr).unwrap();
-                println!("{stderr}");
+                println!("{}", String::from_utf8(out.stderr).unwrap());
+            }
 
-                if !stderr.starts_with("Note: ") {
-                    return Err((String::from("Could not compile project"), 1));
-                }
+            if !out.status.success() {
+                let code = out.status.code().unwrap_or(1);
+                return Err((
+                    format!("javac failed with status {}", out.status),
+                    u8::try_from(code).unwrap_or(1),
+                ));
             }
         }
         Err(e) => return Err((format!("{e}"), 1)),

@@ -39,6 +39,15 @@ Compiles all .java source files inside the source folder(s) defined in the curre
 
 For a configuration to be valid for building, it must define `sources` and `targets`. Additionally if `entry` is specified, the resulting .jar file will be executable.
 
+### Build and run the current project configuration
+`-$ wisteria3 run`
+
+Like build, this compiles all .java source files defined in the current project configuration. However, no targets are written to.
+
+- To pass command-line JVM arguments to the program, write `--` as an argument. Any arguments written after will be passed to the program as-is.
+
+Example: `-$ wisteria3 run -- -Xms4g -Xmx8g`
+
 ### Switch the project configuration
 `-$ wisteria switch <configuration>`
 

@@ -9,6 +9,7 @@ use crate::{
     eclipse::eq_sep_config,
     generators::{eclipse, maven},
     model::{Configuration, Project},
+    util::consts,
 };
 
 #[derive(Clone)]

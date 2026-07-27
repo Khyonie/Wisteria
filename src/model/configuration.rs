@@ -5,9 +5,7 @@ use std::{collections::HashMap, rc::Rc};
 use toml::Table;
 
 use crate::{
-    build::task::{DefinedTask, ImplicitBuildTask, TaskRunner},
-    config::toml_utils,
-    java::compiler_flags::CompilerFlags,
+    build::{run::ImplicitRunTask, task::{DefinedTask, ImplicitBuildTask, TaskRunner}}, cli::args::StartupFlags, config::toml_utils, java::compiler_flags::CompilerFlags
 };
 
 #[derive(Clone)]
@@ -194,10 +192,19 @@ impl Configuration {
         self.compiler_flags.as_ref()
     }
 
-    pub fn apply_implicit(&mut self) {
-        if self.targets.is_some() && self.sources.is_some() {
-            self.tasks
-                .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
+    pub fn apply_implicit(&mut self, flags: StartupFlags) {
+        if self.sources.is_some() {
+            if self.targets().is_some()
+            {
+                self.tasks
+                    .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
+            }
+
+            if self.entry.is_some()
+            {
+                self.tasks
+                    .insert(String::from("run"), Rc::new(ImplicitRunTask::new(flags)));
+            }
         }
     }
 

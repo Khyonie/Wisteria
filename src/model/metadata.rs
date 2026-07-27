@@ -2,7 +2,7 @@ use std::fs::read_to_string;
 
 use toml::Table;
 
-use crate::config::toml_utils::{read_boolean, read_string};
+use crate::{config::toml_utils::{read_boolean, read_string}, util::consts::{self, METADATA_FILE}};
 
 /// Project-local Wisteria state stored in `.wisteria/metadata.toml`.
 pub struct Metadata {
@@ -20,10 +20,10 @@ impl Default for Metadata
 impl Metadata {
     pub fn load() -> Result<Self, (String, u8)> {
         let toml_string =
-            read_to_string(".wisteria/metadata.toml").map_err(|e| (format!("{e}"), 1))?;
+            read_to_string(consts::METADATA_FILE).map_err(|e| (format!("{e}"), 1))?;
 
         let toml: Table = toml_string.parse::<Table>()
-            .map_err(| e | (format!("Invalid or corrupt Wisteria metadata file. Fix \".wisteria/metadata.toml\" in your favorite text editor, or run \"wisteria clean metadata\": {e}"), 1))?;
+            .map_err(| e | (format!("Invalid or corrupt Wisteria metadata file. Fix \"{}\" in your favorite text editor, or run \"wisteria clean metadata\": {e}", METADATA_FILE), 1))?;
 
         let dirty = read_boolean("dirty", &toml)?;
         let configuration =

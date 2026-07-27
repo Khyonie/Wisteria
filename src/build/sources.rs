@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::model::Configuration;
+use crate::util::consts;
 use crate::workspace::files;
 
 pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (String, u8)> {
@@ -18,7 +19,7 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
 
             let mut copied_files: Vec<String> = Vec::new();
 
-            let _ = fs::remove_dir_all(".wisteria/work/src/");
+            let _ = fs::remove_dir_all(consts::SOURCE_OUT_PATH);
 
             for source in sources {
                 let files = files::collect_files_with_extension(&PathBuf::from(source), "java");
@@ -27,10 +28,9 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
                 }
 
                 for f in &files {
-                    let copy_path = format!(
-                        ".wisteria/work/src/{}",
-                        f.to_string_lossy().replacen(source, "", 1)
-                    );
+                    let relative_path = f.to_string_lossy().replacen(source, "", 1);
+                    let relative_path = relative_path.trim_start_matches(['/', '\\']);
+                    let copy_path = format!("{}/{}", consts::SOURCE_OUT_PATH, relative_path);
                     let mut path = PathBuf::from(&copy_path);
                     path.pop();
                     fs::create_dir_all(path).unwrap();

@@ -5,3 +5,6 @@ pub mod package;
 pub mod shade;
 pub mod sources;
 pub mod task;
+pub mod build;
+pub mod run;
+pub mod resolve;

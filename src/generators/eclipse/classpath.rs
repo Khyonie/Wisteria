@@ -5,6 +5,7 @@ use xml::{common::XmlVersion, writer::XmlEvent, EmitterConfig, EventWriter};
 
 use crate::dependency::{Dependency, UpdateContext};
 use crate::model::{Configuration, Project};
+use crate::util::consts;
 use crate::workspace::nature::Nature;
 
 pub fn generate_classpath(
@@ -34,7 +35,7 @@ pub fn generate_classpath(
         for s in sources {
             let source = XmlEvent::start_element("classpathentry")
                 .attr("kind", "src")
-                .attr("output", "target/classes")
+                .attr("output", consts::ECLIPSE_TARGET_CLASSES_PATH)
                 .attr("path", s);
 
             writer.write(source).map_err(|e| e.to_string())?;
@@ -128,7 +129,7 @@ pub fn generate_classpath(
         .write(
             XmlEvent::start_element("classpathentry")
                 .attr("kind", "output")
-                .attr("path", "target/classes/"),
+                .attr("path", consts::ECLIPSE_TARGET_CLASSES_DIR),
         )
         .map_err(|e| e.to_string())?;
     writer
