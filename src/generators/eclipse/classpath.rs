@@ -56,7 +56,6 @@ pub fn generate_classpath(
         width += 5;
         let size = dependencies.len();
 
-        println!("Dependencies: [{:?}]", &dependencies);
         for (index, d) in dependencies.iter().enumerate() {
             print!(
                 "({}/{size}) Resolving {:width$}",
@@ -88,6 +87,24 @@ pub fn generate_classpath(
                         let dep = XmlEvent::start_element("classpathentry")
                             .attr("kind", "lib")
                             .attr("path", path);
+
+                        if let Some(javadoc_url) = dependencies_opt.javadoc()
+                        {
+                            let attributes = XmlEvent::start_element("attributes");
+                            writer.write(attributes).map_err(|e| e.to_string())?;
+
+                            let attribute = XmlEvent::start_element("attribute")
+                                .attr("name", "javadoc_location")
+                                .attr("value", javadoc_url);
+
+                            writer.write(attribute).map_err(|e| e.to_string())?;
+                            writer
+                                .write(XmlEvent::end_element())
+                                .map_err(|e| e.to_string())?;
+                            writer
+                                .write(XmlEvent::end_element())
+                                .map_err(|e| e.to_string())?;
+                        }
 
                         writer.write(dep).map_err(|e| e.to_string())?;
                         writer
