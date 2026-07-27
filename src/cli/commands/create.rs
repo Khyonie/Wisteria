@@ -7,6 +7,7 @@ use std::{
 use crate::cli::args::StartupFlags;
 use crate::cli::commands::print_header;
 use crate::generators::{generate_wisteria_project, WISTERIA_METADATA_TEMPLATE};
+use crate::util::consts;
 
 pub fn trigger_create(args: &[String], flags: &StartupFlags) {
     if args[2].contains('/') || args[2].contains('\\') {
@@ -27,20 +28,24 @@ pub fn trigger_create(args: &[String], flags: &StartupFlags) {
 
     print_header();
 
-    create_dir(path.join(".wisteria/")).unwrap();
+    create_dir(path.join(consts::WISTERIA_DIR)).unwrap();
     write(
-        format!("{}/.wisteria/metadata.toml", args[2]),
+        path.join(consts::METADATA_FILE),
         WISTERIA_METADATA_TEMPLATE,
     )
     .unwrap();
     write(
-        format!("{}/project.toml", args[2]),
+        path.join(consts::PROJECT_FILE),
         generate_wisteria_project(&args[2], flags.minimal),
     )
     .unwrap();
-    create_dir(path.join("src/")).unwrap();
-    create_dir(path.join("lib/")).unwrap();
+    create_dir(path.join(consts::PROJECT_SOURCE_DIR)).unwrap();
+    create_dir(path.join(consts::PROJECT_LIBRARY_DIR)).unwrap();
 
-    println!("Operation complete! You should now open {}/project.toml in your favorite text editor to tweak the project to suit your needs.", args[2]);
+    println!(
+        "Operation complete! You should now open {}/{} in your favorite text editor to tweak the project to suit your needs.",
+        args[2],
+        consts::PROJECT_FILE
+    );
     exit(0)
 }

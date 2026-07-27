@@ -9,6 +9,7 @@ use crate::{
     eclipse::eq_sep_config,
     generators::{eclipse, maven},
     model::{Configuration, Project},
+    util::consts,
 };
 
 #[derive(Clone)]
@@ -26,30 +27,33 @@ impl Nature {
     ) {
         match self {
             Nature::Eclipse => {
-                let _ = create_dir(".settings/");
+                let _ = create_dir(consts::ECLIPSE_SETTINGS_DIR);
                 let _ = write(
-                    ".settings/org.eclipse.jdt.core.prefs",
+                    consts::ECLIPSE_JDT_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_eclipse_config(configuration)),
                 );
                 let _ = write(
-                    ".settings/org.eclipse.m2e.core.prefs",
+                    consts::ECLIPSE_M2E_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
                 );
-                let _ = write(".project", eclipse::generate_project(project).unwrap());
+                let _ = write(
+                    consts::ECLIPSE_PROJECT_FILE,
+                    eclipse::generate_project(project).unwrap(),
+                );
 
                 let _ = write(
-                    ".classpath",
+                    consts::ECLIPSE_CLASSPATH_FILE,
                     eclipse::generate_classpath(project, configuration, regexes).unwrap(),
                 );
             }
             Nature::Maven => {
-                let _ = create_dir(".settings/");
+                let _ = create_dir(consts::ECLIPSE_SETTINGS_DIR);
                 let _ = write(
-                    ".settings/org.eclipse.m2e.core.prefs",
+                    consts::ECLIPSE_M2E_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
                 );
                 let _ = write(
-                    "pom.xml",
+                    consts::MAVEN_POM_FILE,
                     maven::generate_pom(project, configuration).unwrap(),
                 );
             }
@@ -59,11 +63,11 @@ impl Nature {
     pub fn remove_nature(&self) -> Result<(), String> {
         match self {
             Self::Eclipse => {
-                remove_dir_all(".settings").map_err(|e| format!("{e}"))?;
-                remove_file(".classpath").map_err(|e| format!("{e}"))?;
-                remove_file(".project").map_err(|e| format!("{e}"))?;
+                remove_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(|e| format!("{e}"))?;
+                remove_file(consts::ECLIPSE_CLASSPATH_FILE).map_err(|e| format!("{e}"))?;
+                remove_file(consts::ECLIPSE_PROJECT_FILE).map_err(|e| format!("{e}"))?;
             }
-            Self::Maven => remove_file("pom.xml").map_err(|e| format!("{e}"))?,
+            Self::Maven => remove_file(consts::MAVEN_POM_FILE).map_err(|e| format!("{e}"))?,
         }
 
         Ok(())

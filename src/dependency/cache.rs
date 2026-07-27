@@ -1,5 +1,7 @@
+use crate::util::consts;
+
 pub fn url_cache_path(name: &str) -> String {
-    format!(".wisteria/cache/{name}/{name}.jar")
+    format!("{}/{name}/{name}.jar", consts::CACHE_PATH)
 }
 
 pub fn maven_cache_path(
@@ -17,10 +19,11 @@ pub fn maven_cache_path(
         .unwrap_or_default();
 
     format!(
-        ".wisteria/cache/{group_id}/{artifact_id}/{version}/{artifact_id}{value_postfix}{classifier_string}.jar"
+        "{}/{group_id}/{artifact_id}/{version}/{artifact_id}{value_postfix}{classifier_string}.jar",
+        consts::CACHE_PATH
     )
 }
 
 pub fn github_cache_path(username: &str, repository: &str, tag: &str) -> String {
-    format!(".wisteria/cache/{username}/{repository}/{tag}/{repository}.jar")
+    format!("{}/{username}/{repository}/{tag}/{repository}.jar", consts::CACHE_PATH)
 }

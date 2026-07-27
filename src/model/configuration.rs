@@ -211,7 +211,7 @@ impl Configuration {
                     .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
             }
 
-            if self.entry().is_some()
+            if self.entry.is_some()
             {
                 self.tasks
                     .insert(String::from("run"), Rc::new(ImplicitRunTask::new(flags)));

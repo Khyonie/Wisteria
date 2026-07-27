@@ -59,4 +59,3 @@ impl TaskRunner for ImplicitBuildTask {
         self.order.as_ref()
     }
 }
-

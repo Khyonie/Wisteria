@@ -47,7 +47,7 @@ pub fn load_arguments(args: &mut Vec<String>) -> StartupFlags {
                 "project" => match args_iter.next() {
                     Some(a) => flags.use_project = Some(a.clone()),
                     None => {
-                        println!("Missing argument for --project flag. Must specify the file which contains the project configuration, usually \"project.toml\".");
+                        println!("Missing argument for --project flag. Must specify the file which contains the project configuration, usually \"{}\".", consts::PROJECT_FILE);
                         exit(1)
                     }
                 },

@@ -3,7 +3,8 @@ use std::{collections::HashMap, fs::read_to_string};
 use toml::Table;
 
 use crate::{
-    cli::args::StartupFlags, config::toml_utils, dependency::Dependency, model::Configuration, workspace::nature::Nature
+    cli::args::StartupFlags, config::toml_utils, dependency::Dependency, model::Configuration,
+    util::consts, workspace::nature::Nature
 };
 
 /// Collection of identifying information for a project.
@@ -29,12 +30,12 @@ pub struct Project {
 impl Project {
     pub fn from(project_file: Option<String>, flags: StartupFlags) -> Result<Self, (String, u8)> {
         let project_toml_string =
-            read_to_string(project_file.unwrap_or(String::from("project.toml")))
+            read_to_string(project_file.unwrap_or(String::from(consts::PROJECT_FILE)))
                 .map_err(|e| (format!("{e}"), 1))?;
 
         let project_toml: Table = project_toml_string
             .parse::<Table>()
-            .map_err(|e| (format!("Could not read project.toml: {e}"), 1))?;
+            .map_err(|e| (format!("Could not read {}: {e}", consts::PROJECT_FILE), 1))?;
 
         let toml = project_toml.get("project").unwrap().as_table().unwrap();
         let configuration_map = project_toml.get("configuration");

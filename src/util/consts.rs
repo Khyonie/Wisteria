@@ -1,6 +1,6 @@
 use std::env::consts;
 
-pub const VERSION: &str = "3.3.2";
+pub const VERSION: &str = "3.4.0";
 
 pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | warranty | license> 
     (tasks...)
@@ -28,6 +28,32 @@ Flags:
         (new)
     --project <project file>
         Uses a specific project file"#;
+
+pub const PROJECT_FILE: &str = "project.toml";
+
+pub const WISTERIA_DIR: &str = ".wisteria";
+pub const METADATA_FILE: &str = ".wisteria/metadata.toml";
+pub const CACHE_PATH: &str = ".wisteria/cache";
+pub const WORK_DIR: &str = ".wisteria/work";
+pub const SOURCE_OUT_PATH: &str = ".wisteria/work/src";
+pub const BINARY_OUT_PATH: &str = ".wisteria/work/bin";
+pub const SHADED_OUT_PATH: &str = ".wisteria/work/shaded";
+pub const TARGET_JAR_PATH: &str = ".wisteria/work/target.jar";
+pub const MANIFEST_DIR: &str = ".wisteria/work/bin/META-INF";
+pub const MANIFEST_FILE: &str = ".wisteria/work/bin/META-INF/MANIFEST.MF";
+
+pub const PROJECT_SOURCE_DIR: &str = "src";
+pub const PROJECT_LIBRARY_DIR: &str = "lib";
+
+pub const ECLIPSE_SETTINGS_DIR: &str = ".settings";
+pub const ECLIPSE_JDT_PREFS_FILE: &str = ".settings/org.eclipse.jdt.core.prefs";
+pub const ECLIPSE_M2E_PREFS_FILE: &str = ".settings/org.eclipse.m2e.core.prefs";
+pub const ECLIPSE_PROJECT_FILE: &str = ".project";
+pub const ECLIPSE_CLASSPATH_FILE: &str = ".classpath";
+pub const ECLIPSE_TARGET_CLASSES_PATH: &str = "target/classes";
+pub const ECLIPSE_TARGET_CLASSES_DIR: &str = "target/classes/";
+
+pub const MAVEN_POM_FILE: &str = "pom.xml";
 
 pub fn java_seperator() -> char {
     match consts::OS {

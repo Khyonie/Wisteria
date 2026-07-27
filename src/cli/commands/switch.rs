@@ -5,6 +5,7 @@ use crate::cli::commands::{envvar_regexes, print_header, update_dependencies_wit
 use crate::dependency::UpdateContext;
 use crate::generators::generate_metadata;
 use crate::model::{Configuration, Metadata, Project};
+use crate::util::consts;
 use crate::workspace::nature::Nature;
 
 pub fn trigger_switch(
@@ -76,7 +77,7 @@ pub fn trigger_switch(
 
     print!("Finishing up... ");
     metadata.configuration = args[2].clone();
-    let _ = write(".wisteria/metadata.toml", generate_metadata(&metadata));
+    let _ = write(consts::METADATA_FILE, generate_metadata(&metadata));
     println!("Done!");
 
     if failed_downloads.is_empty() {
