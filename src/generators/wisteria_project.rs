@@ -19,6 +19,7 @@ natures = [ "eclipse", "maven" ] # What environments should your project be comp
 sources = [ "src/" ] # Define where Wisteria will look for source files
 dependencies = [  ] # Add the dependencies you've defined above here to add them to the classpath
 targets = [ "targets/{configuration}/{project_name}-{version}.jar" ]
+java_version = 16
 "#;
 
 const PROJECT_TOML_MINIMAL_TEMPLATE: &str = r#"[project]
@@ -33,6 +34,7 @@ natures = [ "eclipse", "maven" ]
 sources = [ ]
 dependencies = [ ]
 targets = [ ]
+java_version = 16
 "#;
 
 pub fn generate_wisteria_project(name: &str, minimal: bool) -> String {
