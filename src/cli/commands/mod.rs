@@ -8,6 +8,7 @@ use crate::util::consts;
 pub mod clean;
 pub mod create;
 pub mod info;
+pub mod migrate;
 pub mod refresh;
 pub mod switch;
 pub mod task;

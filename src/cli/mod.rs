@@ -8,10 +8,18 @@ pub mod commands;
 pub fn run() {
     let mut args: Vec<String> = Vec::new();
     let flags = args::load_arguments(&mut args);
+    let command = args[1].to_lowercase();
+
+    match command.as_str() {
+        "migrate" => commands::migrate::trigger_migrate(&args, &flags),
+        "migrate2" => commands::migrate::trigger_migrate2(&flags),
+        _ => {}
+    }
+
     let project: Result<Project, (String, u8)> =
         Project::from_with_flags(flags.use_project.clone(), flags.clone());
 
-    match args[1].to_lowercase().as_str() {
+    match command.as_str() {
         "refresh" => commands::refresh::trigger_refresh(project),
         "update" if args.len() == 2 => {
             println!(

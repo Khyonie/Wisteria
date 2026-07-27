@@ -71,6 +71,14 @@ Applicable dependencies may be updated with this action as well.
 Downloads a specific Maven or Github dependency as defined under a `[dependencies.<source>]` table in `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
 
 If "all" is specified as the dependency, all applicable dependencies will be updated.
+
+### Migrate a Wisteria 2 project
+`-$ wisteria migrate wisteria2`
+
+Converts a Wisteria 2 `project.toml` to the current format in place. Before writing the converted file, Wisteria writes a backup next to it using a name like `project.toml.wisteria2.bak`. If that backup already exists, the next available numbered backup is used.
+
+The converter maps v2 `project.libraries` entries to local dependency groups, maps each `[task.<name>]` table to `[configuration.<name>]`, and converts common javac `arguments` into structured `compiler_flags` when possible. Use `--project <project file>` to migrate a project file with a different path.
+
 ## project.toml:
 Projects are defined inside of a `project.toml` file at the root of the project hierarchy.
 
