@@ -5,7 +5,7 @@ use std::{collections::HashMap, rc::Rc};
 use toml::Table;
 
 use crate::{
-    build::{run::ImplicitRunTask, task::{DefinedTask, ImplicitBuildTask, TaskRunner}}, cli::args::StartupFlags, config::toml_utils, java::compiler_flags::CompilerFlags
+    build::{javadoc::ImplicitJavadocTask, run::ImplicitRunTask, task::{DefinedTask, ImplicitBuildTask, TaskRunner}}, cli::args::StartupFlags, config::toml_utils, java::compiler_flags::CompilerFlags
 };
 
 #[derive(Clone)]
@@ -194,12 +194,18 @@ impl Configuration {
 
     pub fn apply_implicit(&mut self, flags: StartupFlags) {
         if self.sources.is_some() {
+            // Javadocs
+            self.tasks
+                .insert(String::from("javadocs"), Rc::new(ImplicitJavadocTask::new()));
+
+            // Build
             if self.targets().is_some()
             {
                 self.tasks
                     .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
             }
 
+            // Run
             if self.entry.is_some()
             {
                 self.tasks

@@ -88,8 +88,9 @@ pub fn generate_classpath(
                             .attr("kind", "lib")
                             .attr("path", path);
 
-                        if let Some(javadoc_url) = dependencies_opt.javadoc()
-                        {
+                        writer.write(dep).map_err(|e| e.to_string())?;
+
+                        if let Some(javadoc_url) = dependencies_opt.javadoc() {
                             let attributes = XmlEvent::start_element("attributes");
                             writer.write(attributes).map_err(|e| e.to_string())?;
 
@@ -106,7 +107,6 @@ pub fn generate_classpath(
                                 .map_err(|e| e.to_string())?;
                         }
 
-                        writer.write(dep).map_err(|e| e.to_string())?;
                         writer
                             .write(XmlEvent::end_element())
                             .map_err(|e| e.to_string())?;
@@ -226,6 +226,44 @@ mod tests {
         )));
         assert!(xml.contains("org.eclipse.jdt.launching.JRE_CONTAINER"));
         assert!(xml.contains(r#"path="target/classes/""#));
+    }
+
+    #[test]
+    fn generated_classpath_nests_javadocs_inside_library_entry() {
+        let temp = TempDir::new("classpath-javadoc");
+        let library = temp.path().join("lib/library.jar");
+        fs::create_dir_all(library.parent().unwrap()).unwrap();
+        fs::write(&library, "").unwrap();
+
+        let project = project_from_toml(
+            &temp,
+            &format!(
+                r#"
+                [project]
+                name = "Demo"
+                version = "1.0.0"
+                description = "Demo"
+                natures = [ "eclipse" ]
+
+                [dependencies.archive]
+                library = {{ path = "{}", javadoc = "https://example.com/docs/" }}
+
+                [configuration.main]
+                sources = [ "src/" ]
+                dependencies = [ "library" ]
+                targets = [ "target/demo.jar" ]
+                "#,
+                library.to_string_lossy()
+            ),
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let xml = generate_classpath(&project, configuration, &regexes()).unwrap();
+
+        assert!(xml.contains(r#"name="javadoc_location" value="https://example.com/docs/""#));
+        assert!(
+            xml.find("<attributes>").unwrap() > xml.find(r#"<classpathentry kind="lib""#).unwrap()
+        );
     }
 
     #[test]

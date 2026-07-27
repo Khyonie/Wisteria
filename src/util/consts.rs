@@ -48,6 +48,8 @@ pub const MANIFEST_FILE: &str = ".wisteria/work/bin/META-INF/MANIFEST.MF";
 pub const PROJECT_SOURCE_DIR: &str = "src";
 pub const PROJECT_LIBRARY_DIR: &str = "lib";
 
+pub const DEFAULT_JAVADOC_DIR: &str = "target/javadoc/{configuration}/";
+
 pub const ECLIPSE_SETTINGS_DIR: &str = ".settings";
 pub const ECLIPSE_JDT_PREFS_FILE: &str = ".settings/org.eclipse.jdt.core.prefs";
 pub const ECLIPSE_M2E_PREFS_FILE: &str = ".settings/org.eclipse.m2e.core.prefs";

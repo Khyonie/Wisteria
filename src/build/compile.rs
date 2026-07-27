@@ -21,11 +21,11 @@ pub fn compile_sources(
         }
     }
 
-    for file in copied_files {
+    for file in &copied_files {
         javac_command.arg(file);
     }
 
-    println!("Compiling sources");
+    println!("Compiling {} source files", copied_files.len());
     match javac_command.output() {
         Ok(out) => {
             if !out.stdout.is_empty() {

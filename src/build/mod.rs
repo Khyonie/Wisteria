@@ -8,3 +8,4 @@ pub mod task;
 pub mod build;
 pub mod run;
 pub mod resolve;
+pub mod javadoc;
