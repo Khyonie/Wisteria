@@ -186,8 +186,8 @@ mod tests {
                 description = "Demo"
                 natures = [ "eclipse" ]
 
-                [dependencies]
-                library = {{ type = "loadArchive", path = "{}" }}
+                [dependencies.archive]
+                library = {{ path = "{}" }}
 
                 [configuration.main]
                 sources = [ "src/" ]
@@ -223,8 +223,8 @@ mod tests {
             description = "Demo"
             natures = [ "eclipse", "maven" ]
 
-            [dependencies]
-            library = { type = "fetchFromMaven", group_id = "com.example", artifact_id = "library" }
+            [dependencies.maven]
+            library = { group_id = "com.example", artifact_id = "library" }
 
             [configuration.main]
             sources = [ "src/" ]

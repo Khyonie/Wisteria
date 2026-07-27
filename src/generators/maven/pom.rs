@@ -279,11 +279,13 @@ mod tests {
             version = "1.0.0"
             description = "Demo"
 
-            [dependencies]
-            central = { type = "fetchFromMaven", group_id = "com.example", artifact_id = "central" }
-            custom_a = { type = "fetchFromMaven", url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "a" }
-            custom_b = { type = "fetchFromMaven", url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "b" }
-            local = { type = "loadArchive", path = "lib/local.jar" }
+            [dependencies.maven]
+            central = { group_id = "com.example", artifact_id = "central" }
+            custom_a = { url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "a" }
+            custom_b = { url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "b" }
+
+            [dependencies.archive]
+            local = { path = "lib/local.jar" }
 
             [configuration.main]
             dependencies = [ "central", "custom_a", "custom_b", "local" ]
@@ -295,7 +297,9 @@ mod tests {
 
         assert_eq!(repositories.len(), 1);
         assert_eq!(
-            repositories.get("wisteria-repository-1").map(String::as_str),
+            repositories
+                .get("wisteria-repository-1")
+                .map(String::as_str),
             Some("https://repo.example.com/maven")
         );
     }

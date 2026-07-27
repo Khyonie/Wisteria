@@ -6,4 +6,5 @@ pub mod resolver;
 pub mod sources;
 
 pub use model::{Dependency, GithubReleaseType};
+pub use parse::{load_dependency_map, migrate_legacy_dependency_table};
 pub use policy::{UpdateContext, UpdatePolicy};
