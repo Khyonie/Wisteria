@@ -72,6 +72,20 @@ impl Dependency {
             _ => Some(shaded.contains(&String::from(name))),
         }
     }
+
+    pub fn javadoc(&self) -> Option<&String>
+    {
+        match self
+        {
+            Dependency::LocalFile { javadoc, .. } => javadoc.as_ref(),
+            Dependency::LocalRepository { javadoc, .. } => javadoc.as_ref(),
+            Dependency::FetchFromUrl { javadoc, .. } => javadoc.as_ref(),
+            Dependency::FetchFromMaven { javadoc, .. } => javadoc.as_ref(),
+            Dependency::FetchFromGithub { javadoc , ..} => javadoc.as_ref(),
+            Dependency::BuildFromScript { javadoc, .. } => javadoc.as_ref(),
+            _ => None
+        }
+    }
 }
 
 #[cfg(test)]

@@ -14,6 +14,8 @@ pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | up
         Creates a new project with the given name
     update <(dependencies...) | all>
         Re-fetches the given dependencies, or all dependencies in a project file
+    clean <classes | dependencies | targets | javadocs | metadata | natures | all>
+        Removes generated Wisteria output for the selected target
     info
         Displays project information in a human-friendly format
     switch <configuration>
@@ -47,6 +49,8 @@ pub const MANIFEST_FILE: &str = ".wisteria/work/bin/META-INF/MANIFEST.MF";
 
 pub const PROJECT_SOURCE_DIR: &str = "src";
 pub const PROJECT_LIBRARY_DIR: &str = "lib";
+
+pub const DEFAULT_JAVADOC_DIR: &str = "target/javadoc/{configuration}/";
 
 pub const ECLIPSE_SETTINGS_DIR: &str = ".settings";
 pub const ECLIPSE_JDT_PREFS_FILE: &str = ".settings/org.eclipse.jdt.core.prefs";
