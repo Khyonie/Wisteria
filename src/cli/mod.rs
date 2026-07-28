@@ -29,10 +29,12 @@ pub fn run() {
         }
         "update" => commands::update::trigger_update(project, &args, &flags),
         "clean" if args.len() == 2 => {
-            println!("Not enough arguments. Expected one of [ classes, dependencies, all ], but nothing was supplied.");
+            println!(
+                "Not enough arguments. Expected one of [ classes, dependencies, targets, javadocs, metadata, natures, all ], but nothing was supplied."
+            );
             exit(1)
         }
-        "clean" => commands::clean::trigger_clean(&args),
+        "clean" => commands::clean::trigger_clean(project, &args),
         "new" | "create" if args.len() == 2 => exit(1),
         "new" | "create" => commands::create::trigger_create(&args, &flags),
         "info" => commands::info::trigger_info(project),

@@ -2,11 +2,51 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use toml::Table;
+use toml::{Table, Value};
 
 use crate::{
-    build::{javadoc::ImplicitJavadocTask, run::ImplicitRunTask, task::{DefinedTask, ImplicitBuildTask, TaskRunner}}, cli::args::StartupFlags, config::toml_utils, java::compiler_flags::CompilerFlags
+    build::{
+        javadoc::ImplicitJavadocTask,
+        run::ImplicitRunTask,
+        task::{DefinedTask, ImplicitBuildTask, TaskRunner},
+    },
+    cli::args::StartupFlags,
+    config::toml_utils,
+    java::compiler_flags::CompilerFlags,
+    util::consts,
 };
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct JavadocConfiguration {
+    output_dir: Option<String>,
+    target: Option<String>,
+}
+
+impl JavadocConfiguration {
+    fn from(configuration_name: &str, toml: &Table) -> Result<Self, (String, u8)> {
+        Ok(Self {
+            output_dir: read_optional_javadoc_string(configuration_name, toml, "output-dir")?,
+            target: read_optional_javadoc_string(configuration_name, toml, "target")?,
+        })
+    }
+
+    pub fn output_dir(&self) -> Option<&String> {
+        self.output_dir.as_ref()
+    }
+
+    pub fn target(&self) -> Option<&String> {
+        self.target.as_ref()
+    }
+
+    fn inherit_from(&mut self, configuration: &JavadocConfiguration) {
+        if self.output_dir.is_none() {
+            self.output_dir = configuration.output_dir.clone();
+        }
+        if self.target.is_none() {
+            self.target = configuration.target.clone();
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Configuration {
@@ -16,6 +56,7 @@ pub struct Configuration {
     shaded: Option<Vec<String>>,
     includes: Option<Vec<String>>,
     targets: Option<Vec<String>>,
+    javadoc: Option<JavadocConfiguration>,
 
     entry: Option<String>,
     java_version: u8,
@@ -38,6 +79,21 @@ impl Configuration {
         let shaded = toml_utils::read_string_array("shaded", toml).ok();
         let includes = toml_utils::read_string_array("includes", toml).ok();
         let targets = toml_utils::read_string_array("targets", toml).ok();
+        let javadoc = match toml.get("javadoc") {
+            Some(v) if v.is_table() => {
+                Some(JavadocConfiguration::from(&name, v.as_table().unwrap())?)
+            }
+            Some(v) => {
+                return Err((
+                    format!(
+                        "Mismatched type for \"{name}.javadoc\", expected a table, found {}",
+                        v.type_str()
+                    ),
+                    16,
+                ))
+            }
+            None => None,
+        };
 
         let entry = toml_utils::read_string("entry", toml).ok();
         let java_version = toml_utils::read_integer("java_version", toml).unwrap_or(8);
@@ -139,6 +195,7 @@ impl Configuration {
             shaded,
             includes,
             targets,
+            javadoc,
             entry,
             java_version,
             tasks,
@@ -168,6 +225,22 @@ impl Configuration {
         self.targets.as_ref()
     }
 
+    pub fn javadoc(&self) -> Option<&JavadocConfiguration> {
+        self.javadoc.as_ref()
+    }
+
+    pub fn javadoc_output_dir(&self) -> &str {
+        self.javadoc
+            .as_ref()
+            .and_then(JavadocConfiguration::output_dir)
+            .map(String::as_str)
+            .unwrap_or(consts::DEFAULT_JAVADOC_DIR)
+    }
+
+    pub fn javadoc_target(&self) -> Option<&String> {
+        self.javadoc.as_ref().and_then(JavadocConfiguration::target)
+    }
+
     pub fn entry(&self) -> Option<&String> {
         self.entry.as_ref()
     }
@@ -195,19 +268,19 @@ impl Configuration {
     pub fn apply_implicit(&mut self, flags: StartupFlags) {
         if self.sources.is_some() {
             // Javadocs
-            self.tasks
-                .insert(String::from("javadocs"), Rc::new(ImplicitJavadocTask::new()));
+            self.tasks.insert(
+                String::from("javadocs"),
+                Rc::new(ImplicitJavadocTask::new()),
+            );
 
             // Build
-            if self.targets().is_some()
-            {
+            if self.targets().is_some() {
                 self.tasks
                     .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
             }
 
             // Run
-            if self.entry.is_some()
-            {
+            if self.entry.is_some() {
                 self.tasks
                     .insert(String::from("run"), Rc::new(ImplicitRunTask::new(flags)));
             }
@@ -222,6 +295,11 @@ impl Configuration {
         );
         self.includes = inherit_vec(self.includes.as_mut(), configuration.includes.as_ref());
         self.targets = inherit_vec(self.targets.as_mut(), configuration.targets.as_ref());
+        match (self.javadoc.as_mut(), configuration.javadoc.as_ref()) {
+            (Some(javadoc), Some(parent_javadoc)) => javadoc.inherit_from(parent_javadoc),
+            (None, Some(parent_javadoc)) => self.javadoc = Some(parent_javadoc.clone()),
+            _ => {}
+        }
         if self.entry.is_none() && configuration.entry.is_some() {
             self.entry = configuration.entry.clone();
         }
@@ -268,6 +346,16 @@ impl Configuration {
 
         if let Some(e) = &self.entry {
             println!("│\tMain class       {e}")
+        }
+
+        if let Some(javadoc) = &self.javadoc {
+            if let Some(output_dir) = javadoc.output_dir() {
+                println!("│\tJavadocs         {output_dir}")
+            }
+
+            if let Some(target) = javadoc.target() {
+                println!("│\tJavadoc jar      {target}")
+            }
         }
 
         println!("│\tJava version     {}", self.java_version);
@@ -322,6 +410,24 @@ impl Configuration {
     }
 }
 
+fn read_optional_javadoc_string(
+    configuration_name: &str,
+    toml: &Table,
+    key: &str,
+) -> Result<Option<String>, (String, u8)> {
+    match toml.get(key) {
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(value) => Err((
+            format!(
+                "Mismatched type for \"{configuration_name}.javadoc.{key}\", expected a string, found {}",
+                value.type_str()
+            ),
+            11,
+        )),
+        None => Ok(None),
+    }
+}
+
 fn inherit_vec<T: Clone + Eq>(
     inheritor: Option<&mut Vec<T>>,
     host: Option<&Vec<T>>,
@@ -365,15 +471,24 @@ mod tests {
 
         assert_eq!(configuration.java_version(), 8);
         assert_eq!(
-            configuration.environment().get("project_name").map(String::as_str),
+            configuration
+                .environment()
+                .get("project_name")
+                .map(String::as_str),
             Some("Demo")
         );
         assert_eq!(
-            configuration.environment().get("configuration").map(String::as_str),
+            configuration
+                .environment()
+                .get("configuration")
+                .map(String::as_str),
             Some("main")
         );
         assert_eq!(
-            configuration.environment().get("version").map(String::as_str),
+            configuration
+                .environment()
+                .get("version")
+                .map(String::as_str),
             Some("1.0.0")
         );
     }
@@ -405,12 +520,18 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(configuration.sources().unwrap(), &vec![String::from("src/")]);
+        assert_eq!(
+            configuration.sources().unwrap(),
+            &vec![String::from("src/")]
+        );
         assert_eq!(
             configuration.dependencies().unwrap(),
             &vec![String::from("dep-a"), String::from("dep-b")]
         );
-        assert_eq!(configuration.shaded().unwrap(), &vec![String::from("dep-b")]);
+        assert_eq!(
+            configuration.shaded().unwrap(),
+            &vec![String::from("dep-b")]
+        );
         assert_eq!(
             configuration.includes().unwrap(),
             &vec![String::from("plugin.yml")]
@@ -419,10 +540,16 @@ mod tests {
             configuration.targets().unwrap(),
             &vec![String::from("target/demo.jar")]
         );
-        assert_eq!(configuration.entry().map(String::as_str), Some("com.example.Main"));
+        assert_eq!(
+            configuration.entry().map(String::as_str),
+            Some("com.example.Main")
+        );
         assert_eq!(configuration.java_version(), 21);
         assert_eq!(
-            configuration.environment().get("channel").map(String::as_str),
+            configuration
+                .environment()
+                .get("channel")
+                .map(String::as_str),
             Some("stable")
         );
         assert!(configuration
@@ -435,6 +562,48 @@ mod tests {
             .contains(&CompilerFlags::Encoding {
                 encoding: String::from("UTF-8")
             }));
+    }
+
+    #[test]
+    fn configuration_loads_javadoc_output_and_target() {
+        let configuration = Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                sources = [ "src/" ]
+
+                [javadoc]
+                output-dir = "targets/javadoc/"
+                target = "targets/{configuration}/{version}/{project_name}-javadoc.jar"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        assert_eq!(configuration.javadoc_output_dir(), "targets/javadoc/");
+        assert_eq!(
+            configuration.javadoc_target().map(String::as_str),
+            Some("targets/{configuration}/{version}/{project_name}-javadoc.jar")
+        );
+    }
+
+    #[test]
+    fn configuration_uses_default_javadoc_output_without_javadoc_table() {
+        let configuration = Configuration::from(
+            String::from("main"),
+            &table(r#"sources = [ "src/" ]"#),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            configuration.javadoc_output_dir(),
+            consts::DEFAULT_JAVADOC_DIR
+        );
+        assert_eq!(configuration.javadoc_target(), None);
     }
 
     #[test]
@@ -479,6 +648,10 @@ mod tests {
                 entry = "com.example.Main"
                 java_version = 17
 
+                [javadoc]
+                output-dir = "target/docs/base/"
+                target = "target/base-javadocs.jar"
+
                 [environment]
                 inherited = "yes"
                 "#,
@@ -510,13 +683,15 @@ mod tests {
             child.dependencies().unwrap(),
             &vec![String::from("dep-b"), String::from("dep-a")]
         );
-        assert_eq!(
-            child.includes().unwrap(),
-            &vec![String::from("plugin.yml")]
-        );
+        assert_eq!(child.includes().unwrap(), &vec![String::from("plugin.yml")]);
         assert_eq!(
             child.targets().unwrap(),
             &vec![String::from("target/base.jar")]
+        );
+        assert_eq!(child.javadoc_output_dir(), "target/docs/base/");
+        assert_eq!(
+            child.javadoc_target().map(String::as_str),
+            Some("target/base-javadocs.jar")
         );
         assert_eq!(child.entry().map(String::as_str), Some("com.example.Main"));
         assert_eq!(child.java_version(), 17);

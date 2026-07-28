@@ -14,6 +14,8 @@ pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | up
         Creates a new project with the given name
     update <(dependencies...) | all>
         Re-fetches the given dependencies, or all dependencies in a project file
+    clean <classes | dependencies | targets | javadocs | metadata | natures | all>
+        Removes generated Wisteria output for the selected target
     info
         Displays project information in a human-friendly format
     switch <configuration>
