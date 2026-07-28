@@ -43,7 +43,7 @@ pub fn get_artifact(
             }
         },
         ArtifactVersion::Release => {
-            match metadata.latest() {
+            match metadata.release() {
                 Some(v) => v.clone(),
                 None => return Err(format!("Artifact {artifact_id} does not specify a release version, must explicitly specify a version"))
             }
@@ -147,7 +147,7 @@ pub fn get_version(
             }
         },
         ArtifactVersion::Release => {
-            match metadata.latest() {
+            match metadata.release() {
                 Some(v) => v.clone(),
                 None => return Err(format!("Artifact {artifact_id} does not specify a release version, must explicitly specify a version"))
             }

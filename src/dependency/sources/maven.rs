@@ -42,8 +42,7 @@ pub fn resolve(
     ) {
         Ok(t) => t,
         Err(e) => {
-            println!("{e}");
-            return Ok(Vec::new());
+            return Err((format!("Failed to get Maven repository version information: {e}"), 1))
         }
     };
 
@@ -74,8 +73,7 @@ pub fn resolve(
         ) {
             Ok(t) => t,
             Err(e) => {
-                println!("{e}");
-                return Ok(Vec::new());
+                return Err((format!("Failed to get Maven repository artifact: {e}"), 1))
             }
         };
 

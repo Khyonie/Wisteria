@@ -32,11 +32,22 @@ pub fn trigger_refresh(project: Result<Project, (String, u8)>) {
         &metadata.configuration
     );
 
-    let configuration = project
+    let configuration = match project
         .info()
         .configurations()
-        .get(&metadata.configuration)
-        .unwrap();
+        .get(&metadata.configuration) 
+    {
+        Some(c) => c,
+        None => {
+            println!("No configuration named \"{}\" has been defined in project.toml, consider using 'wisteria switch <configuration>' to  move to a valid configuration", &metadata.configuration);
+            println!("Valid configurations:");
+            for s in project.info().configurations().keys()
+            {
+                println!("- {s}")
+            }
+            exit(1)
+        },
+    };
     let regexes = envvar_regexes();
 
     if let Err((nature, error)) = refresh(&project, configuration, &regexes)

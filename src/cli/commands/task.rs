@@ -21,11 +21,22 @@ pub fn trigger_task(project: Result<Project, (String, u8)>, args: &[String]) {
             exit(code as i32)
         }
     };
-    let configuration: &Configuration = project
+    let configuration: &Configuration = match project
         .info()
         .configurations()
-        .get(&metadata.configuration)
-        .unwrap();
+        .get(&metadata.configuration) 
+    {
+        Some(c) => c,
+        None => {
+            println!("No configuration named \"{}\" has been defined in project.toml, consider using 'wisteria switch <configuration>' to  move to a valid configuration", &metadata.configuration);
+            println!("Valid configurations:");
+            for s in project.info().configurations().keys()
+            {
+                println!("- {s}")
+            }
+            exit(1)
+        },
+    };
 
     let task = match configuration.tasks().get(&args[1]) {
         Some(t) => t,

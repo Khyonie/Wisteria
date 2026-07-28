@@ -26,11 +26,22 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
         }
     };
 
-    let configuration = project
+    let configuration = match project
         .info()
         .configurations()
-        .get(&metadata.configuration)
-        .unwrap();
+        .get(&metadata.configuration) 
+    {
+        Some(c) => c,
+        None => {
+            println!("No configuration named \"{}\" has been defined in project.toml, consider using 'wisteria switch <configuration>' to  move to a valid configuration", &metadata.configuration);
+            println!("Valid configurations:");
+            for s in project.info().configurations().keys()
+            {
+                println!("- {s}")
+            }
+            exit(1)
+        },
+    };
     let regexes = envvar_regexes();
     let mut refresh_failed = false;
 
