@@ -40,42 +40,43 @@ impl Project {
         project_file: Option<String>,
         flags: StartupFlags,
     ) -> Result<Self, (String, u8)> {
-        let project_toml_string =
-            read_to_string(project_file.unwrap_or(String::from(consts::PROJECT_FILE)))
-                .map_err(|e| (format!("{e}"), 1))?;
+        let project_file = project_file.unwrap_or(String::from(consts::PROJECT_FILE));
+        let project_toml_string = read_to_string(&project_file).map_err(|e| {
+            (
+                format!(
+                    "Could not read project file \"{project_file}\": {e}.\nFix: run this command from a Wisteria project folder, create a project with `wisteria create <name>`, or pass a file with `--project <project.toml>`."
+                ),
+                1,
+            )
+        })?;
 
         let mut project_toml: Table = project_toml_string
             .parse::<Table>()
-            .map_err(|e| (format!("Could not read {}: {e}", consts::PROJECT_FILE), 1))?;
+            .map_err(|e| {
+                (
+                    format!(
+                        "Could not parse \"{project_file}\" as TOML: {e}\nFix: check for missing quotes, unfinished arrays/tables, duplicate table headers, or malformed inline tables."
+                    ),
+                    1,
+                )
+            })?;
         migrate_legacy_dependency_table(&mut project_toml)?;
 
-        let toml = project_toml.get("project").unwrap().as_table().unwrap();
+        let toml = read_project_table(&project_toml)?;
         let configuration_map = project_toml.get("configuration");
         let dependencies_map = project_toml.get("dependencies");
 
-        let name: String = toml_utils::read_string("name", toml)?;
-        let version: String = toml_utils::read_string("version", toml)?;
+        let name: String = read_project_string("name", toml)?;
+        let version: String = read_project_string("version", toml)?;
         let info = ProjectInfo {
             name: name.clone(),
-            description: toml_utils::read_string("description", toml)?,
-            authors: toml_utils::read_string_array("authors", toml).unwrap_or_default(),
+            description: read_project_string("description", toml)?,
+            authors: read_project_string_array("authors", toml)?.unwrap_or_default(),
             version: version.clone(),
-            license: toml_utils::read_string_array("license", toml).unwrap_or_default(),
-            homepage: toml_utils::read_string("homepage", toml).ok(),
-            sourcepage: toml_utils::read_string("sourcepage", toml).ok(),
-            natures: {
-                let natures = toml_utils::read_string_array("natures", toml)
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|v| match v.as_str() {
-                        "eclipse" => Some(Nature::Eclipse),
-                        "maven" => Some(Nature::Maven),
-                        _ => None,
-                    })
-                    .collect();
-
-                natures
-            },
+            license: read_project_string_array("license", toml)?.unwrap_or_default(),
+            homepage: read_project_optional_string("homepage", toml)?,
+            sourcepage: read_project_optional_string("sourcepage", toml)?,
+            natures: read_project_natures(toml)?,
             configurations: match configuration_map {
                 Some(v) if v.is_table() => {
                     let v = v.as_table().unwrap();
@@ -85,11 +86,12 @@ impl Project {
                         match v.get(key)
                         {
                             Some(config) if config.is_table() => {
-                                let mut configuration = Configuration::from(key.clone(), config.as_table().unwrap(), name.clone(), version.clone())?;
+                                let mut configuration = Configuration::from(key.clone(), config.as_table().unwrap(), name.clone(), version.clone())
+                                    .map_err(|error| contextual_configuration_load_error(key, error))?;
                                 configuration.apply_implicit(flags.clone());
                                 configurations.insert(key.clone(), configuration)
                             }
-                            Some(v) => return Err((format!("Mismatched type for task \"{key}\", expected a table, found {}", v.type_str()), 16)),
+                            Some(v) => return Err((format!("Invalid [configuration.{key}]: expected a table, found {}.\nFix: define configurations as tables, for example `[configuration.{key}]` followed by keys like `sources` and `targets`.", v.type_str()), 16)),
                             None => None
                         };
                     }
@@ -98,13 +100,13 @@ impl Project {
                     for (config_name, configuration) in configurations.iter() {
                         if let Some(target) = configuration.inherits() {
                             if config_name.eq(target) {
-                                return Err((format!("Configuration \"{config_name}\" cannot inherit from itself"), 40));
+                                return Err((format!("Configuration \"{config_name}\" cannot inherit from itself.\nFix: remove `inherit = \"{target}\"` from [configuration.{config_name}], or point it at a different configuration."), 40));
                             }
 
                             let target = match configurations.get(target)
                             {
                                 Some(c) => c,
-                                None => return Err((format!("No such configuration \"{target}\" to be inherited by \"{config_name}\""), 41))
+                                None => return Err((format!("No such configuration \"{target}\" to be inherited by \"{config_name}\".\nFix: create `[configuration.{target}]`, or change `inherit` in [configuration.{config_name}] to one of: {}.", configuration_names(&configurations)), 41))
                             };
 
                             let mut inheritor: Configuration = configuration.clone();
@@ -123,7 +125,7 @@ impl Project {
                 Some(v) => {
                     return Err((
                         format!(
-                            "Mismatched type for \"configuration\", expected a table, found {}",
+                            "Invalid [configuration] section: expected a table of configuration tables, found {}.\nFix: define configurations like `[configuration.main]`, not `configuration = ...`.",
                             v.type_str()
                         ),
                         16,
@@ -195,6 +197,96 @@ impl Project {
         }
         println!("│\t*Depending on the configuration, Wisteria may automatically provide tasks such as \"build\".")
     }
+}
+
+fn read_project_table(project_toml: &Table) -> Result<&Table, (String, u8)> {
+    match project_toml.get("project") {
+        Some(value) if value.is_table() => Ok(value.as_table().unwrap()),
+        Some(value) => Err((
+            format!(
+                "Invalid [project] section: expected a table, found {}.\nFix: define project metadata with a `[project]` header, then keys like `name`, `version`, and `description` underneath it.",
+                value.type_str()
+            ),
+            16,
+        )),
+        None => Err((
+            String::from(
+                "Missing [project] section in project.toml.\nFix: add a `[project]` table with at least `name`, `version`, and `description`.",
+            ),
+            10,
+        )),
+    }
+}
+
+fn read_project_string(key: &str, toml: &Table) -> Result<String, (String, u8)> {
+    toml_utils::read_string(key, toml).map_err(|error| contextual_project_error(key, error))
+}
+
+fn read_project_optional_string(key: &str, toml: &Table) -> Result<Option<String>, (String, u8)> {
+    toml_utils::read_optional_string(key, toml)
+        .map_err(|error| contextual_project_error(key, error))
+}
+
+fn read_project_string_array(
+    key: &str,
+    toml: &Table,
+) -> Result<Option<Vec<String>>, (String, u8)> {
+    toml_utils::read_optional_string_array(key, toml)
+        .map_err(|error| contextual_project_error(key, error))
+}
+
+fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, (String, u8)> {
+    let Some(natures) = read_project_string_array("natures", toml)? else {
+        return Ok(Vec::new());
+    };
+
+    let mut parsed = Vec::new();
+    for nature in natures {
+        match nature.as_str() {
+            "eclipse" => parsed.push(Nature::Eclipse),
+            "maven" => parsed.push(Nature::Maven),
+            _ => {
+                return Err((
+                    format!(
+                        "Invalid [project].natures entry \"{nature}\".\nFix: supported natures are `eclipse` and `maven`; remove the value or use `natures = [ \"eclipse\", \"maven\" ]`."
+                    ),
+                    31,
+                ))
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
+fn contextual_project_error(key: &str, error: (String, u8)) -> (String, u8) {
+    (
+        format!("Invalid [project].{key}: {}", error.0),
+        error.1,
+    )
+}
+
+fn contextual_configuration_load_error(
+    configuration_name: &str,
+    error: (String, u8),
+) -> (String, u8) {
+    (
+        format!(
+            "Could not load [configuration.{configuration_name}] from project.toml.\n{}",
+            error.0
+        ),
+        error.1,
+    )
+}
+
+fn configuration_names(configurations: &HashMap<String, Configuration>) -> String {
+    if configurations.is_empty() {
+        return String::from("none are currently defined");
+    }
+
+    let mut names: Vec<&str> = configurations.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    names.join(", ")
 }
 
 #[allow(dead_code)]
@@ -438,5 +530,74 @@ mod tests {
 
         assert!(error.0.contains("No such configuration"));
         assert_eq!(error.1, 41);
+    }
+
+    #[test]
+    fn rejects_project_file_without_project_table() {
+        let temp = TempDir::new("project-missing-project-table");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [configuration.main]
+            sources = [ "src/" ]
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected missing [project] table to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Missing [project] section"));
+        assert!(error.0.contains("name`, `version`, and `description"));
+        assert_eq!(error.1, 10);
+    }
+
+    #[test]
+    fn rejects_malformed_optional_project_metadata() {
+        let temp = TempDir::new("project-bad-authors");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+            authors = 42
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected malformed authors to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Invalid [project].authors"));
+        assert!(error.0.contains("authors = [ \"Your Name\" ]"));
+        assert_eq!(error.1, 13);
+    }
+
+    #[test]
+    fn rejects_unknown_project_nature() {
+        let temp = TempDir::new("project-unknown-nature");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+            natures = [ "eclipse", "unknown" ]
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected unknown nature to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.0.contains("Invalid [project].natures entry"));
+        assert!(error.0.contains("supported natures"));
+        assert_eq!(error.1, 31);
     }
 }

@@ -1,7 +1,10 @@
 use std::{fs::write, process::exit};
 
 use crate::cli::args::StartupFlags;
-use crate::cli::commands::{envvar_regexes, print_header, update_dependencies_with_context};
+use crate::cli::commands::{
+    configuration_or_exit, envvar_regexes, print_header, project_or_exit,
+    update_dependencies_with_context,
+};
 use crate::dependency::UpdateContext;
 use crate::generators::generate_metadata;
 use crate::model::{Configuration, Metadata, Project};
@@ -13,16 +16,7 @@ pub fn trigger_switch(
     args: &[String],
     flags: &StartupFlags,
 ) {
-    let project: Project = match project {
-        Ok(p) => p,
-        Err(e) => {
-            println!(
-                "Could not read a Wisteria project.toml file in this directory. ({})",
-                e.0
-            );
-            exit(e.1.into())
-        }
-    };
+    let project: Project = project_or_exit(project);
 
     let mut metadata = match Metadata::load() {
         Ok(m) => m,
@@ -39,18 +33,11 @@ pub fn trigger_switch(
         exit(1)
     }
 
-    let configuration: &Configuration = match project.info().configurations().get(&args[2]) {
-        Some(c) => c,
-        None => {
-            println!("No such configuration \"{}\".", args[2]);
-            exit(1)
-        }
-    };
+    let configuration: &Configuration = configuration_or_exit(&project, &args[2]);
 
     let regexes = envvar_regexes();
     if !flags.no_refresh {
-        if let Err((nature, error)) = refresh(&project, configuration, &regexes)
-        {
+        if let Err((nature, error)) = refresh(&project, configuration, &regexes) {
             println!("Failed to refresh nature {}: {error}", nature.type_str());
             println!("Project might be in a degraded state.");
             exit(1)

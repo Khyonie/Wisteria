@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, process::exit};
 
 use regex::Regex;
 
 use crate::dependency::{Dependency, UpdateContext};
+use crate::model::{Configuration, Project};
 use crate::util::consts;
 
 pub mod clean;
@@ -23,6 +24,53 @@ pub(crate) fn envvar_regexes() -> HashMap<&'static str, Regex> {
     let mut regexes: HashMap<&str, Regex> = HashMap::new();
     regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
     regexes
+}
+
+pub(crate) fn project_or_exit(project: Result<Project, (String, u8)>) -> Project {
+    match project {
+        Ok(project) => project,
+        Err((message, code)) => {
+            println!("Could not load Wisteria project configuration.\n\n{message}");
+            exit(code.into())
+        }
+    }
+}
+
+pub(crate) fn configuration_or_exit<'a>(
+    project: &'a Project,
+    configuration_name: &str,
+) -> &'a Configuration {
+    match project.info().configurations().get(configuration_name) {
+        Some(configuration) => configuration,
+        None => {
+            println!(
+                "No configuration named \"{configuration_name}\" has been defined in project.toml."
+            );
+
+            if project.info().configurations().is_empty() {
+                println!(
+                    "Fix: add a configuration such as `[configuration.main]` with `sources` and, for builds, `targets`."
+                );
+            } else {
+                println!("Valid configurations:");
+                let mut configurations: Vec<&str> = project
+                    .info()
+                    .configurations()
+                    .keys()
+                    .map(String::as_str)
+                    .collect();
+                configurations.sort_unstable();
+                for configuration in configurations {
+                    println!("- {configuration}");
+                }
+                println!(
+                    "Fix: run `wisteria switch <configuration>` to select an existing configuration, or add `[configuration.{configuration_name}]` to project.toml."
+                );
+            }
+
+            exit(1)
+        }
+    }
 }
 
 pub(crate) fn update_dependencies_with_context(
@@ -57,7 +105,7 @@ pub(crate) fn update_dependencies_with_context(
                         continue;
                     }
                 };
-            },
+            }
             None => {
                 println!("Usage of undeclared dependency \"{target}\"");
             }
