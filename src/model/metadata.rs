@@ -23,19 +23,16 @@ impl Default for Metadata {
 }
 
 impl Metadata {
-    pub fn load() -> Result<Self, (String, u8)> {
+    pub fn load() -> Result<Self, String> {
         let toml_string = read_to_string(consts::METADATA_FILE).map_err(|e| {
-            (
-                format!(
-                    "Failed to read metadata file at {}: {e}",
-                    consts::METADATA_FILE
-                ),
-                1,
+            format!(
+                "Failed to read metadata file at {}: {e}",
+                consts::METADATA_FILE
             )
         })?;
 
         let toml: Table = toml_string.parse::<Table>()
-            .map_err(| e | (format!("Invalid or corrupt Wisteria metadata file. Fix \"{}\" in your favorite text editor, or run \"wisteria clean metadata\": {e}", METADATA_FILE), 1))?;
+            .map_err(| e | format!("Invalid or corrupt Wisteria metadata file. Fix \"{}\" in your favorite text editor, or run \"wisteria clean metadata\": {e}", METADATA_FILE))?;
 
         let dirty = read_boolean("dirty", &toml)?;
         let configuration =
@@ -109,12 +106,7 @@ mod tests {
                 Err(error) => error,
             };
 
-            assert!(
-                error
-                    .0
-                    .contains("Invalid or corrupt Wisteria metadata file")
-            );
-            assert_eq!(error.1, 1);
+            assert!(error.contains("Invalid or corrupt Wisteria metadata file"));
         });
     }
 }

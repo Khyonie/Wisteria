@@ -15,7 +15,7 @@ pub fn resolve(
     classifier: Option<&String>,
     update_policy: &UpdatePolicy,
     update: &UpdateContext,
-) -> Result<Vec<PathBuf>, (String, u8)> {
+) -> Result<Vec<PathBuf>, String> {
     let target_version = match version {
         Some(version) => match version.as_str() {
             "latest" => ArtifactVersion::Latest,
@@ -30,7 +30,7 @@ pub fn resolve(
     let client: Client = Client::builder()
         .user_agent(download::USER_AGENT)
         .build()
-        .unwrap();
+        .map_err(|e| format!("Could not create Maven repository client: {e}"))?;
 
     let version = match repository::get_version(
         &client,
@@ -42,9 +42,8 @@ pub fn resolve(
     ) {
         Ok(t) => t,
         Err(e) => {
-            return Err((
-                format!("Failed to get Maven repository version information: {e}"),
-                1,
+            return Err(format!(
+                "Failed to get Maven repository version information: {e}"
             ));
         }
     };
@@ -59,7 +58,7 @@ pub fn resolve(
     let path: PathBuf = PathBuf::from(&filepath);
 
     if update_policy.should_update(update) {
-        paths::ensure_parents(&filepath).map_err(|e| (e, 1))?;
+        paths::ensure_parents(&filepath)?;
 
         if path.exists() {
             println!("Nothing to do");
@@ -75,7 +74,7 @@ pub fn resolve(
             &target_version,
         ) {
             Ok(t) => t,
-            Err(e) => return Err((format!("Failed to get Maven repository artifact: {e}"), 1)),
+            Err(e) => return Err(format!("Failed to get Maven repository artifact: {e}")),
         };
 
         download::download(artifact_id.to_string(), target_url, filepath)?;

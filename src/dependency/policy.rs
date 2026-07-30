@@ -20,7 +20,7 @@ pub enum UpdateContext {
 }
 
 impl UpdatePolicy {
-    pub fn load(value: &str) -> Result<Self, (String, u8)> {
+    pub fn load(value: &str) -> Result<Self, String> {
         match value {
             "Always" => Ok(UpdatePolicy::Always),
             "SwitchOrUpdate" => Ok(UpdatePolicy::SwitchOrUpdate),
@@ -30,11 +30,8 @@ impl UpdatePolicy {
             "TaskOrUpdate" => Ok(UpdatePolicy::TaskOrUpdate),
             "TaskInvokedOnly" => Ok(UpdatePolicy::TaskInvokedOnly),
             "Never" => Ok(UpdatePolicy::Never),
-            _ => Err((
-                String::from(
-                    "Unexpected update policy, expected one of [Always, SwitchOrUpdate, UpdateOnly, SwitchOrTask, SwitchConfigurationOnly, TaskOrUpdate, TaskInvokedOnly, Never]",
-                ),
-                30,
+            _ => Err(String::from(
+                "Unexpected update policy, expected one of [Always, SwitchOrUpdate, UpdateOnly, SwitchOrTask, SwitchConfigurationOnly, TaskOrUpdate, TaskInvokedOnly, Never]",
             )),
         }
     }
@@ -130,8 +127,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Unexpected update policy"));
-        assert_eq!(error.1, 30);
+        assert!(error.contains("Unexpected update policy"));
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub struct DefinedTask {
 }
 
 impl DefinedTask {
-    pub fn new(name: &str, toml: &Map<String, Value>) -> Result<Self, (String, u8)> {
+    pub fn new(name: &str, toml: &Map<String, Value>) -> Result<Self, String> {
         let phases: HashMap<String, Vec<String>> = match toml.get("phase") {
             Some(t) if t.is_table() => {
                 let mut phases: HashMap<String, Vec<String>> = HashMap::new();
@@ -26,13 +26,10 @@ impl DefinedTask {
                                 match v.as_str() {
                                     Some(s) => phase_components.push(s.to_string()),
                                     None => {
-                                        return Err((
-                                            format!(
-                                                "Mismatched type for phase element in phase \"{}\", expected a string, found {}",
-                                                key,
-                                                v.type_str()
-                                            ),
-                                            15,
+                                        return Err(format!(
+                                            "Mismatched type for phase element in phase \"{}\", expected a string, found {}",
+                                            key,
+                                            v.type_str()
                                         ));
                                     }
                                 }
@@ -41,13 +38,10 @@ impl DefinedTask {
                             phases.insert(key.clone(), phase_components);
                         }
                         None => {
-                            return Err((
-                                format!(
-                                    "Mismatched type for phase \"{}\", expected an array of strings, found {}",
-                                    key,
-                                    value.type_str()
-                                ),
-                                13,
+                            return Err(format!(
+                                "Mismatched type for phase \"{}\", expected an array of strings, found {}",
+                                key,
+                                value.type_str()
                             ));
                         }
                     }
@@ -56,18 +50,14 @@ impl DefinedTask {
                 phases
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for phase, expected a table, found {}",
-                        v.type_str()
-                    ),
-                    16,
+                return Err(format!(
+                    "Mismatched type for phase, expected a table, found {}",
+                    v.type_str()
                 ));
             }
             None => {
-                return Err((
-                    String::from("Missing key \"phase\" which should be a table"),
-                    10,
+                return Err(String::from(
+                    "Missing key \"phase\" which should be a table",
                 ));
             }
         };
@@ -79,12 +69,9 @@ impl DefinedTask {
                     match v.as_str() {
                         Some(s) => phase_order.push(s.to_string()),
                         None => {
-                            return Err((
-                                format!(
-                                    "Mismatched type for phase order element, expected a string, found {}",
-                                    v.type_str()
-                                ),
-                                15,
+                            return Err(format!(
+                                "Mismatched type for phase order element, expected a string, found {}",
+                                v.type_str()
                             ));
                         }
                     }
@@ -93,18 +80,14 @@ impl DefinedTask {
                 phase_order
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for phase order, expected an array of strings, found {}",
-                        v.type_str()
-                    ),
-                    13,
+                return Err(format!(
+                    "Mismatched type for phase order, expected an array of strings, found {}",
+                    v.type_str()
                 ));
             }
             None => {
-                return Err((
-                    String::from("Missing key \"phases\", which should be an array of strings"),
-                    10,
+                return Err(String::from(
+                    "Missing key \"phases\", which should be an array of strings",
                 ));
             }
         };
@@ -123,7 +106,7 @@ impl TaskRunner for DefinedTask {
         _info: &ProjectInfo,
         _project: &Project,
         _configuration: &Configuration,
-    ) -> Result<(), (String, u8)> {
+    ) -> Result<(), String> {
         println!("# Running task {}", self.name);
         for (index, phase) in self.phase_order.iter().enumerate() {
             println!(
@@ -133,7 +116,7 @@ impl TaskRunner for DefinedTask {
             );
             let phase_actions = match self.phases.get(phase) {
                 Some(a) => a,
-                None => return Err((format!("No phase \"{phase}\" has been defined"), 1)),
+                None => return Err(format!("No phase \"{phase}\" has been defined")),
             };
 
             for _action in phase_actions {
@@ -191,8 +174,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Missing key \"phase\""));
-        assert_eq!(error.1, 10);
+        assert!(error.contains("Missing key \"phase\""));
     }
 
     #[test]
@@ -211,8 +193,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Mismatched type for phase element"));
-        assert_eq!(error.1, 15);
+        assert!(error.contains("Mismatched type for phase element"));
     }
 
     #[test]
@@ -231,7 +212,6 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Mismatched type for phase order element"));
-        assert_eq!(error.1, 15);
+        assert!(error.contains("Mismatched type for phase order element"));
     }
 }

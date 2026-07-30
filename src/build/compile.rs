@@ -1,12 +1,15 @@
 use std::process::Command;
 
-use crate::{model::Configuration, util::consts};
+use crate::{
+    model::Configuration,
+    util::{consts, exit_code},
+};
 
 pub fn compile_sources(
     configuration: &Configuration,
     copied_files: Vec<String>,
     classpath: Option<&str>,
-) -> Result<(), (String, u8)> {
+) -> Result<(), String> {
     let mut javac_command: Command = Command::new("javac");
     javac_command.args(["-d", consts::BINARY_OUT_PATH]);
     javac_command.args(["--source-path", consts::SOURCE_OUT_PATH]);
@@ -29,22 +32,19 @@ pub fn compile_sources(
     match javac_command.output() {
         Ok(out) => {
             if !out.stdout.is_empty() {
-                println!("{}", String::from_utf8(out.stdout).unwrap());
+                println!("{}", String::from_utf8_lossy(&out.stdout));
             }
 
             if !out.stderr.is_empty() {
-                println!("{}", String::from_utf8(out.stderr).unwrap());
+                println!("{}", String::from_utf8_lossy(&out.stderr));
             }
 
             if !out.status.success() {
-                let code = out.status.code().unwrap_or(1);
-                return Err((
-                    format!("javac failed with status {}", out.status),
-                    u8::try_from(code).unwrap_or(1),
-                ));
+                exit_code::record_external_process_exit_code(out.status);
+                return Err(format!("javac failed with status {}", out.status));
             }
         }
-        Err(e) => return Err((format!("{e}"), 1)),
+        Err(e) => return Err(format!("{e}")),
     }
 
     Ok(())

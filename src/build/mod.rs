@@ -13,6 +13,6 @@ use crate::{
     project::{ImplicitBuildTask, TaskRunner},
 };
 
-pub fn build_project(project: &Project, configuration: &Configuration) -> Result<(), (String, u8)> {
+pub fn build_project(project: &Project, configuration: &Configuration) -> Result<(), String> {
     ImplicitBuildTask::new().invoke(project.info(), project, configuration)
 }

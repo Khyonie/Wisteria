@@ -11,26 +11,23 @@ pub fn resolve_file(
     path: &str,
     environment: &HashMap<String, String>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<Vec<PathBuf>, (String, u8)> {
+) -> Result<Vec<PathBuf>, String> {
     let path = resolve_filepath(path, environment, regexes)?;
     let pathbuf = PathBuf::from(&path);
 
     if !pathbuf.exists() {
-        return Err((format!("Dependency \"{path}\" does not exist"), 63));
+        return Err(format!("Dependency \"{path}\" does not exist"));
     }
 
     if pathbuf.is_dir() {
-        return Err((
-            format!(
-                "Dependency \"{path}\" is a file, not a library. To load a folder, use a \"loadFolder\" dependency type"
-            ),
-            63,
+        return Err(format!(
+            "Dependency \"{path}\" is a file, not a library. To load a folder, use a \"loadFolder\" dependency type"
         ));
     }
 
     let canon_path = match pathbuf.canonicalize() {
         Ok(p) => p,
-        Err(e) => return Err((format!("Could not canonicalize path \"{path}\": {e}"), 62)),
+        Err(e) => return Err(format!("Could not canonicalize path \"{path}\": {e}")),
     };
 
     println!("File found: {}", &canon_path.to_string_lossy());
@@ -42,18 +39,17 @@ pub fn resolve_folder(
     recursive: bool,
     environment: &HashMap<String, String>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<Vec<PathBuf>, (String, u8)> {
+) -> Result<Vec<PathBuf>, String> {
     let path = resolve_filepath(path, environment, regexes)?;
     let pathbuf = PathBuf::from(&path);
 
     if !pathbuf.exists() {
-        return Err((format!("Dependency folder \"{path}\" does not exist"), 63));
+        return Err(format!("Dependency folder \"{path}\" does not exist"));
     }
 
     if pathbuf.is_file() {
-        return Err((
-            format!("Dependency folder \"{path}\" is a regular file, not a folder"),
-            1,
+        return Err(format!(
+            "Dependency folder \"{path}\" is a regular file, not a folder"
         ));
     }
 
@@ -148,8 +144,7 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(error.0.contains("does not exist"));
-        assert_eq!(error.1, 63);
+        assert!(error.contains("does not exist"));
     }
 
     #[test]

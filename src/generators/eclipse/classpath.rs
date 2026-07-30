@@ -95,7 +95,7 @@ pub fn generate_classpath(
                             .map_err(|e| e.to_string())?;
                     }
                 }
-                Err((error, _)) => return Err(error),
+                Err(error) => return Err(error),
             }
         }
     }

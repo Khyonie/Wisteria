@@ -9,11 +9,11 @@ pub fn resolve(
     url: &str,
     update_policy: &UpdatePolicy,
     update: &UpdateContext,
-) -> Result<Vec<PathBuf>, (String, u8)> {
+) -> Result<Vec<PathBuf>, String> {
     let filepath = cache::url_cache_path(name);
 
     if update_policy.should_update(update) {
-        paths::ensure_parents(&filepath).map_err(|e| (e, 1))?;
+        paths::ensure_parents(&filepath)?;
         download::download(name.to_string(), url.to_string(), filepath.clone())?;
     } else {
         println!("Not updating");

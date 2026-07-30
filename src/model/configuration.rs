@@ -38,7 +38,7 @@ impl Configuration {
         toml: &Table,
         project_name: String,
         version: String,
-    ) -> Result<Self, (String, u8)> {
+    ) -> Result<Self, String> {
         let sources = read_optional_string_array_for_configuration(&name, "sources", toml)?;
         let dependencies =
             read_optional_string_array_for_configuration(&name, "dependencies", toml)?;
@@ -65,12 +65,9 @@ impl Configuration {
                             Rc::new(DefinedTask::new(key, t.as_table().unwrap())?),
                         ),
                         Some(t) => {
-                            return Err((
-                                format!(
-                                    "Invalid task [configuration.{name}.task.{key}]: expected a table, found {}.\nFix: define custom task phases under `[configuration.{name}.task.{key}]`, or remove this task entry.",
-                                    t.type_str()
-                                ),
-                                16,
+                            return Err(format!(
+                                "Invalid task [configuration.{name}.task.{key}]: expected a table, found {}.\nFix: define custom task phases under `[configuration.{name}.task.{key}]`, or remove this task entry.",
+                                t.type_str()
                             ));
                         }
                         None => panic!(),
@@ -78,12 +75,9 @@ impl Configuration {
                 }
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Invalid [configuration.{name}].task: expected a table, found {}.\nFix: custom tasks must be defined under `[configuration.{name}.task.<task-name>]` tables, or remove `task`.",
-                        v.type_str()
-                    ),
-                    16,
+                return Err(format!(
+                    "Invalid [configuration.{name}].task: expected a table, found {}.\nFix: custom tasks must be defined under `[configuration.{name}.task.<task-name>]` tables, or remove `task`.",
+                    v.type_str()
                 ));
             }
             None => {}
@@ -102,24 +96,18 @@ impl Configuration {
                     match value.as_str() {
                         Some(s) => environment.insert(key.clone(), s.to_string()),
                         None => {
-                            return Err((
-                                format!(
-                                    "Invalid [configuration.{name}.environment].{key}: expected a string, found {}.\nFix: environment values must be quoted strings, for example `{key} = \"value\"`.",
-                                    value.type_str()
-                                ),
-                                15,
+                            return Err(format!(
+                                "Invalid [configuration.{name}.environment].{key}: expected a string, found {}.\nFix: environment values must be quoted strings, for example `{key} = \"value\"`.",
+                                value.type_str()
                             ));
                         }
                     };
                 }
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Invalid [configuration.{name}].environment: expected a table, found {}.\nFix: define environment variables under `[configuration.{name}.environment]`, for example `channel = \"stable\"`, or remove `environment`.",
-                        v.type_str()
-                    ),
-                    15,
+                return Err(format!(
+                    "Invalid [configuration.{name}].environment: expected a table, found {}.\nFix: define environment variables under `[configuration.{name}.environment]`, for example `channel = \"stable\"`, or remove `environment`.",
+                    v.type_str()
                 ));
             }
             None => {}
@@ -137,12 +125,9 @@ impl Configuration {
                 Some(flags)
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Invalid [configuration.{name}].compiler_flags: expected a table, found {}.\nFix: define compiler flags under `[configuration.{name}.compiler_flags]`, for example `release_target = 17`, or remove `compiler_flags`.",
-                        v.type_str()
-                    ),
-                    16,
+                return Err(format!(
+                    "Invalid [configuration.{name}].compiler_flags: expected a table, found {}.\nFix: define compiler flags under `[configuration.{name}.compiler_flags]`, for example `release_target = 17`, or remove `compiler_flags`.",
+                    v.type_str()
                 ));
             }
             None => None,
@@ -334,7 +319,7 @@ fn read_optional_string_for_configuration(
     configuration_name: &str,
     key: &str,
     toml: &Table,
-) -> Result<Option<String>, (String, u8)> {
+) -> Result<Option<String>, String> {
     toml_utils::read_optional_string(key, toml)
         .map_err(|error| contextual_configuration_error(configuration_name, key, error))
 }
@@ -343,7 +328,7 @@ fn read_optional_integer_for_configuration(
     configuration_name: &str,
     key: &str,
     toml: &Table,
-) -> Result<Option<u8>, (String, u8)> {
+) -> Result<Option<u8>, String> {
     toml_utils::read_optional_integer(key, toml)
         .map_err(|error| contextual_configuration_error(configuration_name, key, error))
 }
@@ -352,22 +337,15 @@ fn read_optional_string_array_for_configuration(
     configuration_name: &str,
     key: &str,
     toml: &Table,
-) -> Result<Option<Vec<String>>, (String, u8)> {
+) -> Result<Option<Vec<String>>, String> {
     toml_utils::read_optional_string_array(key, toml)
         .map_err(|error| contextual_configuration_error(configuration_name, key, error))
 }
 
-fn contextual_configuration_error(
-    configuration_name: &str,
-    key: &str,
-    error: (String, u8),
-) -> (String, u8) {
-    (
-        format!(
-            "Invalid [configuration.{configuration_name}].{key}: {}",
-            error.0
-        ),
-        error.1,
+fn contextual_configuration_error(configuration_name: &str, key: &str, error: String) -> String {
+    format!(
+        "Invalid [configuration.{configuration_name}].{key}: {}",
+        error
     )
 }
 
@@ -614,17 +592,8 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(
-            error
-                .0
-                .contains("Invalid [configuration.main.environment].port")
-        );
-        assert!(
-            error
-                .0
-                .contains("environment values must be quoted strings")
-        );
-        assert_eq!(error.1, 15);
+        assert!(error.contains("Invalid [configuration.main.environment].port"));
+        assert!(error.contains("environment values must be quoted strings"));
     }
 
     #[test]
@@ -639,9 +608,8 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Invalid [configuration.main].sources"));
-        assert!(error.0.contains("sources = [ \"src/\" ]"));
-        assert_eq!(error.1, 13);
+        assert!(error.contains("Invalid [configuration.main].sources"));
+        assert!(error.contains("sources = [ \"src/\" ]"));
     }
 
     #[test]
@@ -656,12 +624,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(
-            error
-                .0
-                .contains("Invalid [configuration.main].java_version")
-        );
-        assert!(error.0.contains("expected a number from 0 to 255"));
-        assert_eq!(error.1, 14);
+        assert!(error.contains("Invalid [configuration.main].java_version"));
+        assert!(error.contains("expected a number from 0 to 255"));
     }
 }

@@ -5,14 +5,14 @@ use crate::model::{Metadata, Project};
 use crate::workspace::refresh::refresh;
 
 /// `wisteria refresh`
-pub fn trigger_refresh(project: Result<Project, (String, u8)>) {
+pub fn trigger_refresh(project: Result<Project, String>) {
     let project: Project = project_or_exit(project);
 
     let metadata = match Metadata::load() {
         Ok(m) => m,
-        Err((e, code)) => {
+        Err(e) => {
             println!("{e}");
-            exit(code as i32)
+            exit(1)
         }
     };
 

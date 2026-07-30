@@ -7,14 +7,11 @@ use crate::model::Configuration;
 use crate::util::consts;
 use crate::workspace::files;
 
-pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (String, u8)> {
+pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, String> {
     match configuration.sources() {
         Some(sources) => {
             if sources.is_empty() {
-                return Err((
-                    String::from("No source folders given, nothing to compile"),
-                    1,
-                ));
+                return Err(String::from("No source folders given, nothing to compile"));
             }
 
             let mut copied_files: Vec<String> = Vec::new();
@@ -24,10 +21,7 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
             for source in sources {
                 let files = files::collect_files_with_extension(&PathBuf::from(source), "java")
                     .map_err(|e| {
-                        (
-                            format!("Could not collect source files from \"{source}\": {e}"),
-                            1,
-                        )
+                        format!("Could not collect source files from \"{source}\": {e}")
                     })?;
                 if files.is_empty() {
                     continue;
@@ -40,17 +34,14 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
                     let mut path = PathBuf::from(&copy_path);
                     path.pop();
                     fs::create_dir_all(path)
-                        .map_err(|e| (format!("Failed to create directory: {e}"), 1))?;
+                        .map_err(|e| format!("Failed to create directory: {e}"))?;
                     File::create(&copy_path)
-                        .map_err(|e| (format!("Failed to create relative path: {e}"), 1))?;
+                        .map_err(|e| format!("Failed to create relative path: {e}"))?;
 
                     fs::copy(f, &copy_path).map_err(|e| {
-                        (
-                            format!(
-                                "Failed to copy source file \"{}\" to \"{copy_path}\": {e}",
-                                f.display()
-                            ),
-                            1,
+                        format!(
+                            "Failed to copy source file \"{}\" to \"{copy_path}\": {e}",
+                            f.display()
                         )
                     })?;
 
@@ -60,10 +51,7 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
 
             Ok(copied_files)
         }
-        None => Err((
-            String::from("No source folders given, nothing to compile"),
-            1,
-        )),
+        None => Err(String::from("No source folders given, nothing to compile")),
     }
 }
 
@@ -121,8 +109,7 @@ mod tests {
 
         let error = collect_sources(&configuration).unwrap_err();
 
-        assert_eq!(error.0, "No source folders given, nothing to compile");
-        assert_eq!(error.1, 1);
+        assert_eq!(error, "No source folders given, nothing to compile");
     }
 
     #[test]
@@ -141,9 +128,8 @@ mod tests {
 
             let error = collect_sources(&configuration).unwrap_err();
 
-            assert!(error.0.contains("Could not collect source files"));
-            assert!(error.0.contains(&source.display().to_string()));
-            assert_eq!(error.1, 1);
+            assert!(error.contains("Could not collect source files"));
+            assert!(error.contains(&source.display().to_string()));
         });
     }
 }

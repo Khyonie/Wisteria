@@ -11,18 +11,14 @@ use crate::model::{Configuration, Metadata, Project};
 use crate::util::consts;
 use crate::workspace::refresh::refresh;
 
-pub fn trigger_switch(
-    project: Result<Project, (String, u8)>,
-    args: &[String],
-    flags: &StartupFlags,
-) {
+pub fn trigger_switch(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let project: Project = project_or_exit(project);
 
     let mut metadata = match Metadata::load() {
         Ok(m) => m,
-        Err((e, code)) => {
+        Err(e) => {
             println!("{e}");
-            exit(code as i32)
+            exit(1)
         }
     };
 

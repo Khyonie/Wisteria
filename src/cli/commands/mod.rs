@@ -26,12 +26,12 @@ pub(crate) fn envvar_regexes() -> HashMap<&'static str, Regex> {
     regexes
 }
 
-pub(crate) fn project_or_exit(project: Result<Project, (String, u8)>) -> Project {
+pub(crate) fn project_or_exit(project: Result<Project, String>) -> Project {
     match project {
         Ok(project) => project,
-        Err((message, code)) => {
+        Err(message) => {
             println!("Could not load Wisteria project configuration.\n\n{message}");
-            exit(code.into())
+            exit(1)
         }
     }
 }
@@ -100,8 +100,8 @@ pub(crate) fn update_dependencies_with_context(
                 let _ = match dep.resolve(name, environment, regexes, context) {
                     Ok(p) => p,
                     Err(e) => {
-                        println!("Could not download {name}: {}", e.0);
-                        failed_downloads.push((name.clone(), e.0));
+                        println!("Could not download {name}: {e}");
+                        failed_downloads.push((name.clone(), e));
                         continue;
                     }
                 };

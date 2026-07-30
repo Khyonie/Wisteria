@@ -6,7 +6,7 @@ use crate::config::toml_utils;
 use crate::dependency::{Dependency, GithubReleaseType, UpdatePolicy};
 
 impl Dependency {
-    pub fn load(toml: &Table) -> Result<Dependency, (String, u8)> {
+    pub fn load(toml: &Table) -> Result<Dependency, String> {
         match toml.get("type") {
             Some(val) if val.is_str() => {
                 let dependency_type = val.as_str().unwrap();
@@ -110,31 +110,22 @@ impl Dependency {
                             javadoc,
                         })
                     }
-                    _ => Err((
-                        format!(
-                            "Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."
-                        ),
-                        31,
+                    _ => Err(format!(
+                        "Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."
                     )),
                 }
             }
-            Some(val) => Err((
-                format!(
-                    "Unexpected input for dependency type, expected a string, found {}. Fix: use a quoted dependency type such as `type = \"fetchFromMaven\"`, or move the dependency under a grouped table such as `[dependencies.maven]`.",
-                    val.type_str()
-                ),
-                32,
+            Some(val) => Err(format!(
+                "Unexpected input for dependency type, expected a string, found {}. Fix: use a quoted dependency type such as `type = \"fetchFromMaven\"`, or move the dependency under a grouped table such as `[dependencies.maven]`.",
+                val.type_str()
             )),
-            None => Err((
-                String::from(
-                    "Dependency must explicitly define its type. Fix: either add `type = \"fetchFromMaven\"`/another supported type, or move the dependency under a grouped table such as `[dependencies.maven]`.",
-                ),
-                32,
+            None => Err(String::from(
+                "Dependency must explicitly define its type. Fix: either add `type = \"fetchFromMaven\"`/another supported type, or move the dependency under a grouped table such as `[dependencies.maven]`.",
             )),
         }
     }
 
-    pub fn load_from_group(group: &str, toml: &Table) -> Result<Dependency, (String, u8)> {
+    pub fn load_from_group(group: &str, toml: &Table) -> Result<Dependency, String> {
         let dependency_type = dependency_type_for_group(group)?;
         let mut toml = toml.clone();
 
@@ -142,20 +133,14 @@ impl Dependency {
             match existing_type.as_str() {
                 Some(existing_type) if existing_type == dependency_type => {}
                 Some(existing_type) => {
-                    return Err((
-                        format!(
-                            "Dependency in group \"{group}\" has mismatched type \"{existing_type}\", expected \"{dependency_type}\".\nFix: remove the `type` key from grouped dependencies, or move this dependency to the group that matches its type."
-                        ),
-                        32,
+                    return Err(format!(
+                        "Dependency in group \"{group}\" has mismatched type \"{existing_type}\", expected \"{dependency_type}\".\nFix: remove the `type` key from grouped dependencies, or move this dependency to the group that matches its type."
                     ));
                 }
                 None => {
-                    return Err((
-                        format!(
-                            "Mismatched type for dependency type in group \"{group}\", expected a string, found {}.\nFix: remove the `type` key from grouped dependencies, or write it as a quoted string.",
-                            existing_type.type_str()
-                        ),
-                        32,
+                    return Err(format!(
+                        "Mismatched type for dependency type in group \"{group}\", expected a string, found {}.\nFix: remove the `type` key from grouped dependencies, or write it as a quoted string.",
+                        existing_type.type_str()
                     ));
                 }
             }
@@ -172,18 +157,15 @@ impl Dependency {
 
 pub fn load_dependency_map(
     dependencies_map: Option<&Value>,
-) -> Result<HashMap<String, Dependency>, (String, u8)> {
+) -> Result<HashMap<String, Dependency>, String> {
     let Some(dependencies_map) = dependencies_map else {
         return Ok(HashMap::new());
     };
 
     let Some(dependencies_table) = dependencies_map.as_table() else {
-        return Err((
-            format!(
-                "Invalid [dependencies] section: expected a table, found {}.\nFix: define dependencies under grouped tables such as `[dependencies.maven]`, `[dependencies.github]`, or `[dependencies.archive]`.",
-                dependencies_map.type_str()
-            ),
-            16,
+        return Err(format!(
+            "Invalid [dependencies] section: expected a table, found {}.\nFix: define dependencies under grouped tables such as `[dependencies.maven]`, `[dependencies.github]`, or `[dependencies.archive]`.",
+            dependencies_map.type_str()
         ));
     };
 
@@ -191,12 +173,9 @@ pub fn load_dependency_map(
 
     for (key, value) in dependencies_table {
         let Some(table) = value.as_table() else {
-            return Err((
-                format!(
-                    "Invalid [dependencies].{key}: expected a table, found {}.\nFix: dependencies must be inline tables like `gson = {{ group_id = \"com.google.code.gson\", artifact_id = \"gson\" }}` or nested under a grouped table.",
-                    value.type_str()
-                ),
-                16,
+            return Err(format!(
+                "Invalid [dependencies].{key}: expected a table, found {}.\nFix: dependencies must be inline tables like `gson = {{ group_id = \"com.google.code.gson\", artifact_id = \"gson\" }}` or nested under a grouped table.",
+                value.type_str()
             ));
         };
 
@@ -208,22 +187,16 @@ pub fn load_dependency_map(
         }
 
         if dependency_type_for_group(key).is_err() {
-            return Err((
-                format!(
-                    "Unknown dependency group \"{key}\". Expected one of [archive, folder, url, maven, github, local_repository, script].\nFix: move this dependency under a supported table such as `[dependencies.maven]`, or add a legacy `type = \"...\"` key if this was meant to be a flat dependency."
-                ),
-                31,
+            return Err(format!(
+                "Unknown dependency group \"{key}\". Expected one of [archive, folder, url, maven, github, local_repository, script].\nFix: move this dependency under a supported table such as `[dependencies.maven]`, or add a legacy `type = \"...\"` key if this was meant to be a flat dependency."
             ));
         }
 
         for (dependency_name, dependency_value) in table {
             let Some(dependency_table) = dependency_value.as_table() else {
-                return Err((
-                    format!(
-                        "Invalid [dependencies.{key}].{dependency_name}: expected a table, found {}.\nFix: write the dependency as an inline table, for example `{dependency_name} = {{ group_id = \"com.example\", artifact_id = \"library\" }}`.",
-                        dependency_value.type_str()
-                    ),
-                    16,
+                return Err(format!(
+                    "Invalid [dependencies.{key}].{dependency_name}: expected a table, found {}.\nFix: write the dependency as an inline table, for example `{dependency_name} = {{ group_id = \"com.example\", artifact_id = \"library\" }}`.",
+                    dependency_value.type_str()
                 ));
             };
 
@@ -236,18 +209,15 @@ pub fn load_dependency_map(
     Ok(dependencies)
 }
 
-pub fn migrate_legacy_dependency_table(project_toml: &mut Table) -> Result<bool, (String, u8)> {
+pub fn migrate_legacy_dependency_table(project_toml: &mut Table) -> Result<bool, String> {
     let Some(dependencies_value) = project_toml.get_mut("dependencies") else {
         return Ok(false);
     };
 
     let Some(dependencies_table) = dependencies_value.as_table_mut() else {
-        return Err((
-            format!(
-                "Invalid [dependencies] section: expected a table, found {}.\nFix: define dependencies under grouped tables such as `[dependencies.maven]`, `[dependencies.github]`, or `[dependencies.archive]`.",
-                dependencies_value.type_str()
-            ),
-            16,
+        return Err(format!(
+            "Invalid [dependencies] section: expected a table, found {}.\nFix: define dependencies under grouped tables such as `[dependencies.maven]`, `[dependencies.github]`, or `[dependencies.archive]`.",
+            dependencies_value.type_str()
         ));
     };
 
@@ -271,12 +241,9 @@ pub fn migrate_legacy_dependency_table(project_toml: &mut Table) -> Result<bool,
         };
 
         let Some(dependency_type) = dependency_type_value.as_str() else {
-            return Err((
-                format!(
-                    "Mismatched type for dependency type in \"{key}\", expected a string, found {}.\nFix: write the type as a quoted string, for example `type = \"fetchFromMaven\"`, or move the dependency under a grouped table.",
-                    dependency_type_value.type_str()
-                ),
-                32,
+            return Err(format!(
+                "Mismatched type for dependency type in \"{key}\", expected a string, found {}.\nFix: write the type as a quoted string, for example `type = \"fetchFromMaven\"`, or move the dependency under a grouped table.",
+                dependency_type_value.type_str()
             ));
         };
 
@@ -300,13 +267,10 @@ fn insert_dependency(
     dependencies: &mut HashMap<String, Dependency>,
     name: &str,
     dependency: Dependency,
-) -> Result<(), (String, u8)> {
+) -> Result<(), String> {
     if dependencies.insert(name.to_string(), dependency).is_some() {
-        return Err((
-            format!(
-                "Duplicate dependency name \"{name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."
-            ),
-            33,
+        return Err(format!(
+            "Duplicate dependency name \"{name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."
         ));
     }
 
@@ -317,7 +281,7 @@ fn merge_dependency_group(
     dependencies_table: &mut Table,
     group: String,
     dependency_group: Table,
-) -> Result<(), (String, u8)> {
+) -> Result<(), String> {
     for (dependency_name, dependency_value) in dependency_group {
         insert_grouped_dependency(
             dependencies_table,
@@ -335,14 +299,11 @@ fn insert_grouped_dependency(
     group: &str,
     dependency_name: String,
     dependency_value: Value,
-) -> Result<(), (String, u8)> {
+) -> Result<(), String> {
     if !matches!(dependency_value, Value::Table(_)) {
-        return Err((
-            format!(
-                "Mismatched type for dependency \"{dependency_name}\" in group \"{group}\", expected a table, found {}.\nFix: dependencies must be inline tables under `[dependencies.{group}]`.",
-                dependency_value.type_str()
-            ),
-            16,
+        return Err(format!(
+            "Mismatched type for dependency \"{dependency_name}\" in group \"{group}\", expected a table, found {}.\nFix: dependencies must be inline tables under `[dependencies.{group}]`.",
+            dependency_value.type_str()
         ));
     }
 
@@ -352,12 +313,9 @@ fn insert_grouped_dependency(
 
     let group_value = dependencies_table.get_mut(group).unwrap();
     let Some(group_table) = group_value.as_table_mut() else {
-        return Err((
-            format!(
-                "Mismatched type for dependency group \"{group}\", expected a table, found {}.\nFix: ensure `[dependencies.{group}]` is a table and not an inline value.",
-                group_value.type_str()
-            ),
-            16,
+        return Err(format!(
+            "Mismatched type for dependency group \"{group}\", expected a table, found {}.\nFix: ensure `[dependencies.{group}]` is a table and not an inline value.",
+            group_value.type_str()
         ));
     };
 
@@ -365,18 +323,15 @@ fn insert_grouped_dependency(
         .insert(dependency_name.clone(), dependency_value)
         .is_some()
     {
-        return Err((
-            format!(
-                "Duplicate dependency name \"{dependency_name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."
-            ),
-            33,
+        return Err(format!(
+            "Duplicate dependency name \"{dependency_name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."
         ));
     }
 
     Ok(())
 }
 
-fn dependency_type_for_group(group: &str) -> Result<&'static str, (String, u8)> {
+fn dependency_type_for_group(group: &str) -> Result<&'static str, String> {
     match group {
         "archive" | "loadArchive" => Ok("loadArchive"),
         "folder" | "loadFolder" => Ok("loadFolder"),
@@ -385,16 +340,13 @@ fn dependency_type_for_group(group: &str) -> Result<&'static str, (String, u8)> 
         "github" | "fetchFromGithub" => Ok("fetchFromGithub"),
         "local_repository" | "localRepository" => Ok("localRepository"),
         "script" | "buildFromScript" => Ok("buildFromScript"),
-        _ => Err((
-            format!(
-                "Unknown dependency group \"{group}\". Fix: use one of [archive, folder, url, maven, github, local_repository, script]."
-            ),
-            31,
+        _ => Err(format!(
+            "Unknown dependency group \"{group}\". Fix: use one of [archive, folder, url, maven, github, local_repository, script]."
         )),
     }
 }
 
-fn group_for_dependency_type(dependency_type: &str) -> Result<&'static str, (String, u8)> {
+fn group_for_dependency_type(dependency_type: &str) -> Result<&'static str, String> {
     match dependency_type {
         "loadArchive" => Ok("archive"),
         "loadFolder" => Ok("folder"),
@@ -403,11 +355,8 @@ fn group_for_dependency_type(dependency_type: &str) -> Result<&'static str, (Str
         "fetchFromGithub" => Ok("github"),
         "localRepository" => Ok("local_repository"),
         "buildFromScript" => Ok("script"),
-        _ => Err((
-            format!(
-                "Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."
-            ),
-            31,
+        _ => Err(format!(
+            "Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."
         )),
     }
 }
@@ -415,38 +364,33 @@ fn group_for_dependency_type(dependency_type: &str) -> Result<&'static str, (Str
 fn contextual_dependency_error(
     dependency_name: &str,
     group: Option<&str>,
-    error: (String, u8),
-) -> (String, u8) {
+    error: String,
+) -> String {
     let location = match group {
         Some(group) => format!("[dependencies.{group}].{dependency_name}"),
         None => format!("[dependencies].{dependency_name}"),
     };
 
-    (
-        format!("Invalid dependency {location}: {}", error.0),
-        error.1,
-    )
+    format!("Invalid dependency {location}: {error}")
 }
 
 fn github_owner_and_repository(
     username: Option<String>,
     repository: String,
-) -> Result<(String, String), (String, u8)> {
+) -> Result<(String, String), String> {
     if let Some(username) = username {
         return Ok((username, repository));
     }
 
     let Some((username, repository)) = repository.split_once('/') else {
-        return Err((
-            String::from("Missing key username and repository is not in owner/repository form"),
-            10,
+        return Err(String::from(
+            "Missing key username and repository is not in owner/repository form",
         ));
     };
 
     if username.is_empty() || repository.is_empty() || repository.contains('/') {
-        return Err((
-            String::from("GitHub repository shorthand must be in owner/repository form"),
-            10,
+        return Err(String::from(
+            "GitHub repository shorthand must be in owner/repository form",
         ));
     }
 
@@ -561,8 +505,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Duplicate dependency name"));
-        assert_eq!(error.1, 33);
+        assert!(error.contains("Duplicate dependency name"));
     }
 
     #[test]
@@ -646,7 +589,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Missing key username"));
+        assert!(error.contains("Missing key username"));
     }
 
     #[test]
@@ -663,7 +606,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("owner/repository"));
+        assert!(error.contains("owner/repository"));
     }
 
     #[test]
@@ -681,7 +624,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Mismatched type for \"username\""));
+        assert!(error.contains("Mismatched type for \"username\""));
     }
 
     #[test]
@@ -719,7 +662,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Unexpected GitHub release type"));
+        assert!(error.contains("Unexpected GitHub release type"));
     }
 
     #[test]
@@ -807,14 +750,9 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(
-            error
-                .0
-                .contains("Invalid dependency [dependencies.maven].broken")
-        );
-        assert!(error.0.contains("Missing key group_id"));
-        assert!(error.0.contains("group_id = \"com.example\""));
-        assert_eq!(error.1, 10);
+        assert!(error.contains("Invalid dependency [dependencies.maven].broken"));
+        assert!(error.contains("Missing key group_id"));
+        assert!(error.contains("group_id = \"com.example\""));
     }
 
     #[test]
@@ -830,7 +768,6 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Unknown dependency type"));
-        assert_eq!(error.1, 31);
+        assert!(error.contains("Unknown dependency type"));
     }
 }

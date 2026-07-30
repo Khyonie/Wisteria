@@ -32,32 +32,26 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn from(project_file: Option<String>) -> Result<Self, (String, u8)> {
+    pub fn from(project_file: Option<String>) -> Result<Self, String> {
         Self::from_with_flags(project_file, StartupFlags::default())
     }
 
     pub fn from_with_flags(
         project_file: Option<String>,
         flags: StartupFlags,
-    ) -> Result<Self, (String, u8)> {
+    ) -> Result<Self, String> {
         let project_file = project_file.unwrap_or(String::from(consts::PROJECT_FILE));
         let project_toml_string = read_to_string(&project_file).map_err(|e| {
-            (
-                format!(
-                    "Could not read project file \"{project_file}\": {e}.\nFix: run this command from a Wisteria project folder, create a project with `wisteria create <name>`, or pass a file with `--project <project.toml>`."
-                ),
-                1,
+            format!(
+                "Could not read project file \"{project_file}\": {e}.\nFix: run this command from a Wisteria project folder, create a project with `wisteria create <name>`, or pass a file with `--project <project.toml>`."
             )
         })?;
 
         let mut project_toml: Table = project_toml_string
             .parse::<Table>()
             .map_err(|e| {
-                (
-                    format!(
-                        "Could not parse \"{project_file}\" as TOML: {e}\nFix: check for missing quotes, unfinished arrays/tables, duplicate table headers, or malformed inline tables."
-                    ),
-                    1,
+                format!(
+                    "Could not parse \"{project_file}\" as TOML: {e}\nFix: check for missing quotes, unfinished arrays/tables, duplicate table headers, or malformed inline tables."
                 )
             })?;
         migrate_legacy_dependency_table(&mut project_toml)?;
@@ -96,12 +90,9 @@ impl Project {
                                 configurations.insert(key.clone(), configuration)
                             }
                             Some(v) => {
-                                return Err((
-                                    format!(
-                                        "Invalid [configuration.{key}]: expected a table, found {}.\nFix: define configurations as tables, for example `[configuration.{key}]` followed by keys like `sources` and `targets`.",
-                                        v.type_str()
-                                    ),
-                                    16,
+                                return Err(format!(
+                                    "Invalid [configuration.{key}]: expected a table, found {}.\nFix: define configurations as tables, for example `[configuration.{key}]` followed by keys like `sources` and `targets`.",
+                                    v.type_str()
                                 ));
                             }
                             None => None,
@@ -112,23 +103,17 @@ impl Project {
                     for (config_name, configuration) in configurations.iter() {
                         if let Some(target) = configuration.inherits() {
                             if config_name.eq(target) {
-                                return Err((
-                                    format!(
-                                        "Configuration \"{config_name}\" cannot inherit from itself.\nFix: remove `inherit = \"{target}\"` from [configuration.{config_name}], or point it at a different configuration."
-                                    ),
-                                    40,
+                                return Err(format!(
+                                    "Configuration \"{config_name}\" cannot inherit from itself.\nFix: remove `inherit = \"{target}\"` from [configuration.{config_name}], or point it at a different configuration."
                                 ));
                             }
 
                             let target = match configurations.get(target) {
                                 Some(c) => c,
                                 None => {
-                                    return Err((
-                                        format!(
-                                            "No such configuration \"{target}\" to be inherited by \"{config_name}\".\nFix: create `[configuration.{target}]`, or change `inherit` in [configuration.{config_name}] to one of: {}.",
-                                            configuration_names(&configurations)
-                                        ),
-                                        41,
+                                    return Err(format!(
+                                        "No such configuration \"{target}\" to be inherited by \"{config_name}\".\nFix: create `[configuration.{target}]`, or change `inherit` in [configuration.{config_name}] to one of: {}.",
+                                        configuration_names(&configurations)
                                     ));
                                 }
                             };
@@ -147,12 +132,9 @@ impl Project {
                     configurations
                 }
                 Some(v) => {
-                    return Err((
-                        format!(
-                            "Invalid [configuration] section: expected a table of configuration tables, found {}.\nFix: define configurations like `[configuration.main]`, not `configuration = ...`.",
-                            v.type_str()
-                        ),
-                        16,
+                    return Err(format!(
+                        "Invalid [configuration] section: expected a table of configuration tables, found {}.\nFix: define configurations like `[configuration.main]`, not `configuration = ...`.",
+                        v.type_str()
                     ));
                 }
                 None => HashMap::new(),
@@ -225,40 +207,34 @@ impl Project {
     }
 }
 
-fn read_project_table(project_toml: &Table) -> Result<&Table, (String, u8)> {
+fn read_project_table(project_toml: &Table) -> Result<&Table, String> {
     match project_toml.get("project") {
         Some(value) if value.is_table() => Ok(value.as_table().unwrap()),
-        Some(value) => Err((
-            format!(
-                "Invalid [project] section: expected a table, found {}.\nFix: define project metadata with a `[project]` header, then keys like `name`, `version`, and `description` underneath it.",
-                value.type_str()
-            ),
-            16,
+        Some(value) => Err(format!(
+            "Invalid [project] section: expected a table, found {}.\nFix: define project metadata with a `[project]` header, then keys like `name`, `version`, and `description` underneath it.",
+            value.type_str()
         )),
-        None => Err((
-            String::from(
-                "Missing [project] section in project.toml.\nFix: add a `[project]` table with at least `name`, `version`, and `description`.",
-            ),
-            10,
+        None => Err(String::from(
+            "Missing [project] section in project.toml.\nFix: add a `[project]` table with at least `name`, `version`, and `description`.",
         )),
     }
 }
 
-fn read_project_string(key: &str, toml: &Table) -> Result<String, (String, u8)> {
+fn read_project_string(key: &str, toml: &Table) -> Result<String, String> {
     toml_utils::read_string(key, toml).map_err(|error| contextual_project_error(key, error))
 }
 
-fn read_project_optional_string(key: &str, toml: &Table) -> Result<Option<String>, (String, u8)> {
+fn read_project_optional_string(key: &str, toml: &Table) -> Result<Option<String>, String> {
     toml_utils::read_optional_string(key, toml)
         .map_err(|error| contextual_project_error(key, error))
 }
 
-fn read_project_string_array(key: &str, toml: &Table) -> Result<Option<Vec<String>>, (String, u8)> {
+fn read_project_string_array(key: &str, toml: &Table) -> Result<Option<Vec<String>>, String> {
     toml_utils::read_optional_string_array(key, toml)
         .map_err(|error| contextual_project_error(key, error))
 }
 
-fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, (String, u8)> {
+fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, String> {
     let Some(natures) = read_project_string_array("natures", toml)? else {
         return Ok(Vec::new());
     };
@@ -269,11 +245,8 @@ fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, (String, u8)> {
             "eclipse" => parsed.push(Nature::Eclipse),
             "maven" => parsed.push(Nature::Maven),
             _ => {
-                return Err((
-                    format!(
-                        "Invalid [project].natures entry \"{nature}\".\nFix: supported natures are `eclipse` and `maven`; remove the value or use `natures = [ \"eclipse\", \"maven\" ]`."
-                    ),
-                    31,
+                return Err(format!(
+                    "Invalid [project].natures entry \"{nature}\".\nFix: supported natures are `eclipse` and `maven`; remove the value or use `natures = [ \"eclipse\", \"maven\" ]`."
                 ));
             }
         }
@@ -282,20 +255,14 @@ fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, (String, u8)> {
     Ok(parsed)
 }
 
-fn contextual_project_error(key: &str, error: (String, u8)) -> (String, u8) {
-    (format!("Invalid [project].{key}: {}", error.0), error.1)
+fn contextual_project_error(key: &str, error: String) -> String {
+    format!("Invalid [project].{key}: {error}")
 }
 
-fn contextual_configuration_load_error(
-    configuration_name: &str,
-    error: (String, u8),
-) -> (String, u8) {
-    (
-        format!(
-            "Could not load [configuration.{configuration_name}] from project.toml.\n{}",
-            error.0
-        ),
-        error.1,
+fn contextual_configuration_load_error(configuration_name: &str, error: String) -> String {
+    format!(
+        "Could not load [configuration.{configuration_name}] from project.toml.\n{}",
+        error
     )
 }
 
@@ -523,8 +490,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("cannot inherit from itself"));
-        assert_eq!(error.1, 40);
+        assert!(error.contains("cannot inherit from itself"));
     }
 
     #[test]
@@ -548,8 +514,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("No such configuration"));
-        assert_eq!(error.1, 41);
+        assert!(error.contains("No such configuration"));
     }
 
     #[test]
@@ -568,9 +533,8 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Missing [project] section"));
-        assert!(error.0.contains("name`, `version`, and `description"));
-        assert_eq!(error.1, 10);
+        assert!(error.contains("Missing [project] section"));
+        assert!(error.contains("name`, `version`, and `description"));
     }
 
     #[test]
@@ -592,9 +556,8 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Invalid [project].authors"));
-        assert!(error.0.contains("authors = [ \"Your Name\" ]"));
-        assert_eq!(error.1, 13);
+        assert!(error.contains("Invalid [project].authors"));
+        assert!(error.contains("authors = [ \"Your Name\" ]"));
     }
 
     #[test]
@@ -616,8 +579,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Invalid [project].natures entry"));
-        assert!(error.0.contains("supported natures"));
-        assert_eq!(error.1, 31);
+        assert!(error.contains("Invalid [project].natures entry"));
+        assert!(error.contains("supported natures"));
     }
 }

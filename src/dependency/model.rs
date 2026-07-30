@@ -132,16 +132,13 @@ pub enum GithubReleaseType {
 }
 
 impl GithubReleaseType {
-    pub fn load(value: &str) -> Result<Self, (String, u8)> {
+    pub fn load(value: &str) -> Result<Self, String> {
         match value {
             "release" => Ok(Self::Release),
             "prerelease" | "pre-release" => Ok(Self::Prerelease),
             "any" => Ok(Self::Any),
-            _ => Err((
-                format!(
-                    "Unexpected GitHub release type, expected one of [release, prerelease, pre-release, any], found {value}"
-                ),
-                30,
+            _ => Err(format!(
+                "Unexpected GitHub release type, expected one of [release, prerelease, pre-release, any], found {value}"
             )),
         }
     }

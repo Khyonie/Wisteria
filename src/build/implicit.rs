@@ -37,7 +37,7 @@ impl TaskRunner for ImplicitBuildTask {
         _info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
-    ) -> Result<(), (String, u8)> {
+    ) -> Result<(), String> {
         let mut regexes: HashMap<&str, Regex> = HashMap::new();
         regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
 

@@ -1,101 +1,80 @@
 use toml::{Value, map::Map};
 
-pub fn read_string(key: &str, toml: &Map<String, Value>) -> Result<String, (String, u8)> {
+pub fn read_string(key: &str, toml: &Map<String, Value>) -> Result<String, String> {
     match read_optional_string(key, toml)? {
         Some(value) => Ok(value),
-        None => Err((missing_key_message(key, value_hint(key, "a string")), 10)),
+        None => Err(missing_key_message(key, value_hint(key, "a string"))),
     }
 }
 
 pub fn read_optional_string(
     key: &str,
     toml: &Map<String, Value>,
-) -> Result<Option<String>, (String, u8)> {
+) -> Result<Option<String>, String> {
     match toml.get(key) {
         Some(v) if v.is_str() => Ok(Some(v.as_str().unwrap().to_string())),
-        Some(v) => Err((
-            format!(
-                "Mismatched type for \"{key}\", expected a string, found {}. {}",
-                v.type_str(),
-                value_hint(key, "a string")
-            ),
-            11,
+        Some(v) => Err(format!(
+            "Mismatched type for \"{key}\", expected a string, found {}. {}",
+            v.type_str(),
+            value_hint(key, "a string")
         )),
         None => Ok(None),
     }
 }
 
-pub fn read_boolean(key: &str, toml: &Map<String, Value>) -> Result<bool, (String, u8)> {
+pub fn read_boolean(key: &str, toml: &Map<String, Value>) -> Result<bool, String> {
     match toml.get(key) {
         Some(v) if v.is_bool() => Ok(v.as_bool().unwrap()),
-        Some(v) => Err((
-            format!(
-                "Mismatched type for \"{key}\", expected a boolean, found {}. {}",
-                v.type_str(),
-                value_hint(key, "a boolean")
-            ),
-            12,
+        Some(v) => Err(format!(
+            "Mismatched type for \"{key}\", expected a boolean, found {}. {}",
+            v.type_str(),
+            value_hint(key, "a boolean")
         )),
-        None => Err((missing_key_message(key, value_hint(key, "a boolean")), 10)),
+        None => Err(missing_key_message(key, value_hint(key, "a boolean"))),
     }
 }
 
-pub fn read_integer(key: &str, toml: &Map<String, Value>) -> Result<u8, (String, u8)> {
+pub fn read_integer(key: &str, toml: &Map<String, Value>) -> Result<u8, String> {
     match read_optional_integer(key, toml)? {
         Some(value) => Ok(value),
-        None => Err((missing_key_message(key, value_hint(key, "a number")), 10)),
+        None => Err(missing_key_message(key, value_hint(key, "a number"))),
     }
 }
 
-pub fn read_optional_integer(
-    key: &str,
-    toml: &Map<String, Value>,
-) -> Result<Option<u8>, (String, u8)> {
+pub fn read_optional_integer(key: &str, toml: &Map<String, Value>) -> Result<Option<u8>, String> {
     match toml.get(key) {
         Some(v) if v.is_integer() => {
             let value = v.as_integer().unwrap();
             if !(0..=u8::MAX as i64).contains(&value) {
-                return Err((
-                    format!(
-                        "Invalid value for \"{key}\": expected a number from 0 to {}, found {value}. {}",
-                        u8::MAX,
-                        value_hint(key, "a number")
-                    ),
-                    14,
+                return Err(format!(
+                    "Invalid value for \"{key}\": expected a number from 0 to {}, found {value}. {}",
+                    u8::MAX,
+                    value_hint(key, "a number")
                 ));
             }
 
             Ok(Some(value as u8))
         }
-        Some(v) => Err((
-            format!(
-                "Mismatched type for \"{key}\", expected a number, found {}. {}",
-                v.type_str(),
-                value_hint(key, "a number")
-            ),
-            14,
+        Some(v) => Err(format!(
+            "Mismatched type for \"{key}\", expected a number, found {}. {}",
+            v.type_str(),
+            value_hint(key, "a number")
         )),
         None => Ok(None),
     }
 }
 
-pub fn read_string_array(
-    key: &str,
-    toml: &Map<String, Value>,
-) -> Result<Vec<String>, (String, u8)> {
+pub fn read_string_array(key: &str, toml: &Map<String, Value>) -> Result<Vec<String>, String> {
     match read_optional_string_array(key, toml)? {
         Some(value) => Ok(value),
-        None => Err((
-            missing_key_message(key, value_hint(key, "a string array")),
-            10,
-        )),
+        None => Err(missing_key_message(key, value_hint(key, "a string array"))),
     }
 }
 
 pub fn read_optional_string_array(
     key: &str,
     toml: &Map<String, Value>,
-) -> Result<Option<Vec<String>>, (String, u8)> {
+) -> Result<Option<Vec<String>>, String> {
     match toml.get(key) {
         Some(v) if v.is_array() => {
             let mut data: Vec<String> = Vec::new();
@@ -104,13 +83,10 @@ pub fn read_optional_string_array(
                 match e.as_str() {
                     Some(s) => data.push(s.to_string()),
                     None => {
-                        return Err((
-                            format!(
-                                "Mismatched element at index {index} in string array \"{key}\", expected a string, found {}. {}",
-                                e.type_str(),
-                                value_hint(key, "a string array")
-                            ),
-                            15,
+                        return Err(format!(
+                            "Mismatched element at index {index} in string array \"{key}\", expected a string, found {}. {}",
+                            e.type_str(),
+                            value_hint(key, "a string array")
                         ));
                     }
                 }
@@ -119,13 +95,10 @@ pub fn read_optional_string_array(
             Ok(Some(data))
         }
         Some(v) if v.is_str() => Ok(Some(vec![v.as_str().unwrap().to_string()])),
-        Some(v) => Err((
-            format!(
-                "Mismatched type for \"{key}\", expected a string array, found {}. {}",
-                v.type_str(),
-                value_hint(key, "a string array")
-            ),
-            13,
+        Some(v) => Err(format!(
+            "Mismatched type for \"{key}\", expected a string array, found {}. {}",
+            v.type_str(),
+            value_hint(key, "a string array")
         )),
         None => Ok(None),
     }
@@ -221,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_type_mismatches_with_specific_codes() {
+    fn reports_type_mismatches_with_helpful_messages() {
         let toml = table(
             r#"
             name = 12
@@ -230,9 +203,21 @@ mod tests {
             "#,
         );
 
-        assert_eq!(read_string("name", &toml).unwrap_err().1, 11);
-        assert_eq!(read_boolean("enabled", &toml).unwrap_err().1, 12);
-        assert_eq!(read_integer("version", &toml).unwrap_err().1, 14);
+        assert!(
+            read_string("name", &toml)
+                .unwrap_err()
+                .contains("expected a string")
+        );
+        assert!(
+            read_boolean("enabled", &toml)
+                .unwrap_err()
+                .contains("expected a boolean")
+        );
+        assert!(
+            read_integer("version", &toml)
+                .unwrap_err()
+                .contains("expected a number")
+        );
     }
 
     #[test]
@@ -257,8 +242,7 @@ mod tests {
 
         let error = read_string_array("dependencies", &toml).unwrap_err();
 
-        assert!(error.0.contains("Mismatched element"));
-        assert_eq!(error.1, 15);
+        assert!(error.contains("Mismatched element"));
     }
 
     #[test]
