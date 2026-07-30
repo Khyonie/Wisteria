@@ -38,11 +38,11 @@ pub fn trigger_update(
             UpdateContext::Update,
         );
 
-        if !flags.no_refresh {
-            if let Err((nature, error)) = refresh(&project, configuration, &regexes) {
-                println!("Failed to refresh nature {}: {error}", nature.type_str());
-                refresh_failed = true
-            }
+        if !flags.no_refresh
+            && let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        {
+            println!("Failed to refresh nature {}: {error}", nature.type_str());
+            refresh_failed = true
         }
 
         if !failed.is_empty() {
@@ -98,11 +98,11 @@ pub fn trigger_update(
         UpdateContext::Update,
     );
 
-    if !flags.no_refresh {
-        if let Err((nature, error)) = refresh(&project, configuration, &regexes) {
-            println!("Failed to refresh nature {}: {error}", nature.type_str());
-            refresh_failed = true
-        }
+    if !flags.no_refresh
+        && let Err((nature, error)) = refresh(&project, configuration, &regexes)
+    {
+        println!("Failed to refresh nature {}: {error}", nature.type_str());
+        refresh_failed = true
     }
 
     if !failed.is_empty() {

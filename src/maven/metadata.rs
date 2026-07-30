@@ -100,10 +100,10 @@ impl SnapshotMetadata {
                         continue;
                     }
 
-                    if let Some(artifact_classifier) = &snapshot.classifier {
-                        if classifier == artifact_classifier {
-                            return Some(snapshot.value.clone());
-                        }
+                    if let Some(artifact_classifier) = &snapshot.classifier
+                        && classifier == artifact_classifier
+                    {
+                        return Some(snapshot.value.clone());
                     }
                 }
             }

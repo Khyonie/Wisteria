@@ -13,8 +13,16 @@ pub fn resolve_filepath(
     regexes: &HashMap<&str, Regex>,
 ) -> Result<String, (String, u8)> {
     let mut interim_path: String = path.to_string();
+    let envvar_regex = regexes.get("envvars").ok_or_else(|| {
+        (
+            format!(
+                "Could not resolve path \"{path}\": internal envvar matcher is missing.\nFix: report this as a Wisteria bug; path expansion requires the `envvars` regex to be registered."
+            ),
+            61,
+        )
+    })?;
 
-    while let Some(capture) = regexes.get("envvars").unwrap().captures(&interim_path) {
+    while let Some(capture) = envvar_regex.captures(&interim_path) {
         let (full, [key]) = capture.extract();
         {
             interim_path = match environment.get(key) {
@@ -32,11 +40,36 @@ pub fn resolve_filepath(
     }
 
     if interim_path.starts_with('~') {
-        interim_path = interim_path.replacen('~', &resolve_os_var("HOME", "HOMEPATH").unwrap(), 1);
+        let home = resolve_os_var("HOME", "HOMEPATH").ok_or_else(|| {
+            (
+                format!(
+                    "Could not expand home directory in path \"{path}\" because no home directory environment variable is available.\nFix: set HOME on macOS/Linux or HOMEPATH on Windows, or use an absolute path instead of `~`."
+                ),
+                61,
+            )
+        })?;
+        interim_path = interim_path.replacen('~', &home, 1);
     }
 
     if interim_path.starts_with("./") {
-        interim_path.replace_range(..1, env::current_dir().unwrap().to_str().unwrap());
+        let current_dir = env::current_dir().map_err(|e| {
+            (
+                format!(
+                    "Could not resolve relative path \"{path}\" because the current directory could not be read: {e}.\nFix: run Wisteria from a valid project directory or use an absolute path."
+                ),
+                61,
+            )
+        })?;
+        let current_dir = current_dir.to_str().ok_or_else(|| {
+            (
+                format!(
+                    "Could not resolve relative path \"{path}\" because the current directory \"{}\" is not valid UTF-8.\nFix: move the project to a path with UTF-8-compatible characters or use an absolute path.",
+                    current_dir.to_string_lossy()
+                ),
+                61,
+            )
+        })?;
+        interim_path.replace_range(..1, current_dir);
     }
 
     Ok(interim_path)
@@ -110,6 +143,19 @@ mod tests {
     }
 
     #[test]
+    fn fails_when_envvar_regex_is_missing() {
+        let error = resolve_filepath(
+            "target/{configuration}.jar",
+            &environment(),
+            &HashMap::new(),
+        )
+        .unwrap_err();
+
+        assert!(error.0.contains("internal envvar matcher is missing"));
+        assert_eq!(error.1, 61);
+    }
+
+    #[test]
     fn expands_dot_relative_paths_from_current_directory() {
         let temp = TempDir::new("paths-relative");
 
@@ -136,5 +182,26 @@ mod tests {
 
         assert_eq!(parent, temp.path().join("a/b"));
         assert!(parent.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fails_when_current_directory_is_not_valid_utf8() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let temp = TempDir::new("paths-invalid-utf8");
+        let invalid_dir = temp
+            .path()
+            .join(OsString::from_vec(vec![b'd', b'i', b'r', 0x80]));
+        fs::create_dir_all(&invalid_dir).unwrap();
+
+        with_current_dir(&invalid_dir, || {
+            let error =
+                resolve_filepath("./target/app.jar", &environment(), &regexes()).unwrap_err();
+
+            assert!(error.0.contains("not valid UTF-8"));
+            assert_eq!(error.1, 61);
+        });
     }
 }

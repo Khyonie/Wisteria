@@ -25,7 +25,7 @@ pub(crate) fn refresh(
     print_action_header("Applying natures", 2, 2);
     for nature in project.info().natures() {
         print!("> Applying project nature \"{}\"... ", nature.type_str());
-        if let Err(e) = nature.setup_nature(&project, configuration, &regexes) {
+        if let Err(e) = nature.setup_nature(project, configuration, regexes) {
             println!("Failed: {e}");
             print!(
                 "Deleting project nature \"{}\" for project cleanliness ... ",

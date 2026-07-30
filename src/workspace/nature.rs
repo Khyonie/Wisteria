@@ -13,6 +13,14 @@ use crate::{
     util::consts,
 };
 
+fn ignore_not_found(result: std::io::Result<()>) -> Result<(), String> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("{e}")),
+    }
+}
+
 #[derive(Clone)]
 pub enum Nature {
     Eclipse,
@@ -75,34 +83,13 @@ impl Nature {
     pub fn remove_nature(&self) -> Result<(), String> {
         match self {
             Self::Eclipse => {
-                if let Err(e) = remove_dir_all(consts::ECLIPSE_SETTINGS_DIR) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"));
-                    }
-                }
-                if let Err(e) = remove_file(consts::ECLIPSE_CLASSPATH_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"));
-                    }
-                }
-
-                if let Err(e) = remove_file(consts::ECLIPSE_PROJECT_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"));
-                    }
-                }
+                ignore_not_found(remove_dir_all(consts::ECLIPSE_SETTINGS_DIR))?;
+                ignore_not_found(remove_file(consts::ECLIPSE_CLASSPATH_FILE))?;
+                ignore_not_found(remove_file(consts::ECLIPSE_PROJECT_FILE))?;
             }
             Self::Maven => {
-                if let Err(e) = remove_file(consts::MAVEN_POM_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"));
-                    }
-                }
-                if let Err(e) = remove_file(consts::ECLIPSE_M2E_PREFS_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"));
-                    }
-                }
+                ignore_not_found(remove_file(consts::MAVEN_POM_FILE))?;
+                ignore_not_found(remove_file(consts::ECLIPSE_M2E_PREFS_FILE))?;
             }
         }
 

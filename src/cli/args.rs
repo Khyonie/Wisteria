@@ -3,23 +3,12 @@ use std::{env, process::exit};
 use crate::util::consts;
 
 /// Flags added with the -- prefix.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct StartupFlags {
     pub minimal: bool,
     pub use_project: Option<String>,
     pub no_refresh: bool,
     pub passed_args: Vec<String>,
-}
-
-impl Default for StartupFlags {
-    fn default() -> Self {
-        Self {
-            minimal: false,
-            use_project: None,
-            no_refresh: false,
-            passed_args: Vec::new(),
-        }
-    }
 }
 
 /// Takes the arguments passed into the program and turns them into arguments and flags.

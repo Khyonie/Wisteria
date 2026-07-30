@@ -22,7 +22,13 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
             let _ = fs::remove_dir_all(consts::SOURCE_OUT_PATH);
 
             for source in sources {
-                let files = files::collect_files_with_extension(&PathBuf::from(source), "java");
+                let files = files::collect_files_with_extension(&PathBuf::from(source), "java")
+                    .map_err(|e| {
+                        (
+                            format!("Could not collect source files from \"{source}\": {e}"),
+                            1,
+                        )
+                    })?;
                 if files.is_empty() {
                     continue;
                 }
@@ -38,13 +44,15 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
                     File::create(&copy_path)
                         .map_err(|e| (format!("Failed to create relative path: {e}"), 1))?;
 
-                    match fs::copy(f, &copy_path) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("{e}");
-                            continue;
-                        }
-                    }
+                    fs::copy(f, &copy_path).map_err(|e| {
+                        (
+                            format!(
+                                "Failed to copy source file \"{}\" to \"{copy_path}\": {e}",
+                                f.display()
+                            ),
+                            1,
+                        )
+                    })?;
 
                     copied_files.push(copy_path);
                 }
@@ -115,5 +123,27 @@ mod tests {
 
         assert_eq!(error.0, "No source folders given, nothing to compile");
         assert_eq!(error.1, 1);
+    }
+
+    #[test]
+    fn collect_sources_errors_when_source_path_cannot_be_traversed() {
+        let temp = TempDir::new("collect-sources-unreadable");
+        let source = temp.path().join("src");
+        fs::write(&source, "").unwrap();
+
+        with_current_dir(temp.path(), || {
+            let configuration = configuration(&format!(
+                r#"
+                sources = [ "{}" ]
+                "#,
+                source.to_string_lossy()
+            ));
+
+            let error = collect_sources(&configuration).unwrap_err();
+
+            assert!(error.0.contains("Could not collect source files"));
+            assert!(error.0.contains(&source.display().to_string()));
+            assert_eq!(error.1, 1);
+        });
     }
 }
