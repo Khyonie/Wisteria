@@ -1,10 +1,10 @@
+pub mod build;
 pub mod compile;
 pub mod defined;
 pub mod implicit;
 pub mod package;
+pub mod resolve;
+pub mod run;
 pub mod shade;
 pub mod sources;
 pub mod task;
-pub mod build;
-pub mod run;
-pub mod resolve;

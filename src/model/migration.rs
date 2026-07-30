@@ -714,24 +714,30 @@ mod tests {
         );
 
         let dependencies = migrated.get("dependencies").unwrap().as_table().unwrap();
-        assert!(dependencies
-            .get("folder")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("lib"));
-        assert!(dependencies
-            .get("folder")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("external"));
-        assert!(dependencies
-            .get("archive")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("example"));
+        assert!(
+            dependencies
+                .get("folder")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("lib")
+        );
+        assert!(
+            dependencies
+                .get("folder")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("external")
+        );
+        assert!(
+            dependencies
+                .get("archive")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("example")
+        );
 
         let main = migrated
             .get("configuration")
@@ -782,10 +788,12 @@ mod tests {
                 .and_then(Value::as_bool),
             Some(true)
         );
-        assert!(conversion
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("-unsupported")));
+        assert!(
+            conversion
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("-unsupported"))
+        );
     }
 
     #[test]
@@ -818,8 +826,10 @@ mod tests {
             fs::read_to_string(temp.path().join("project.toml.wisteria2.bak")).unwrap(),
             "existing"
         );
-        assert!(fs::read_to_string(&project_file)
-            .unwrap()
-            .contains("[configuration.main]"));
+        assert!(
+            fs::read_to_string(&project_file)
+                .unwrap()
+                .contains("[configuration.main]")
+        );
     }
 }

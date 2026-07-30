@@ -59,8 +59,10 @@ mod tests {
         assert!(project.contains("name = \"Demo\""));
         assert!(project.contains("natures = [ \"eclipse\", \"maven\" ]"));
         assert!(project.contains("[configuration.main]"));
-        assert!(project
-            .contains("targets = [ \"targets/{configuration}/{project_name}-{version}.jar\" ]"));
+        assert!(
+            project
+                .contains("targets = [ \"targets/{configuration}/{project_name}-{version}.jar\" ]")
+        );
     }
 
     #[test]

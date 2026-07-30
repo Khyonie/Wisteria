@@ -1,4 +1,4 @@
-use xml::{common::XmlVersion, writer::XmlEvent, EmitterConfig, EventWriter};
+use xml::{EmitterConfig, EventWriter, common::XmlVersion, writer::XmlEvent};
 
 use crate::model::Project;
 use crate::workspace::nature::Nature;

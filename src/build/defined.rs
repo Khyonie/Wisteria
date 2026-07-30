@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use toml::{map::Map, Value};
+use toml::{Value, map::Map};
 
 use crate::build::task::TaskRunner;
 use crate::model::{Configuration, Project, ProjectInfo};
@@ -18,23 +18,38 @@ impl DefinedTask {
             Some(t) if t.is_table() => {
                 let mut phases: HashMap<String, Vec<String>> = HashMap::new();
                 for (key, value) in t.as_table().unwrap() {
-                    match value.as_array()
-                    {
+                    match value.as_array() {
                         Some(value) => {
                             let mut phase_components: Vec<String> = Vec::new();
 
-                            for v in value
-                            {
-                                match v.as_str()
-                                {
+                            for v in value {
+                                match v.as_str() {
                                     Some(s) => phase_components.push(s.to_string()),
-                                    None => return Err((format!("Mismatched type for phase element in phase \"{}\", expected a string, found {}", key, v.type_str()), 15))
+                                    None => {
+                                        return Err((
+                                            format!(
+                                                "Mismatched type for phase element in phase \"{}\", expected a string, found {}",
+                                                key,
+                                                v.type_str()
+                                            ),
+                                            15,
+                                        ));
+                                    }
                                 }
                             }
 
                             phases.insert(key.clone(), phase_components);
-                        },
-                        None => return Err((format!("Mismatched type for phase \"{}\", expected an array of strings, found {}", key, value.type_str()), 13))
+                        }
+                        None => {
+                            return Err((
+                                format!(
+                                    "Mismatched type for phase \"{}\", expected an array of strings, found {}",
+                                    key,
+                                    value.type_str()
+                                ),
+                                13,
+                            ));
+                        }
                     }
                 }
 
@@ -47,13 +62,13 @@ impl DefinedTask {
                         v.type_str()
                     ),
                     16,
-                ))
+                ));
             }
             None => {
                 return Err((
                     String::from("Missing key \"phase\" which should be a table"),
                     10,
-                ))
+                ));
             }
         };
 
@@ -61,11 +76,16 @@ impl DefinedTask {
             Some(a) if a.is_array() => {
                 let mut phase_order: Vec<String> = Vec::new();
                 for v in a.as_array().unwrap() {
-                    match v.as_str()
-                    {
+                    match v.as_str() {
                         Some(s) => phase_order.push(s.to_string()),
                         None => {
-                            return Err((format!("Mismatched type for phase order element, expected a string, found {}", v.type_str()), 15))
+                            return Err((
+                                format!(
+                                    "Mismatched type for phase order element, expected a string, found {}",
+                                    v.type_str()
+                                ),
+                                15,
+                            ));
                         }
                     }
                 }
@@ -79,13 +99,13 @@ impl DefinedTask {
                         v.type_str()
                     ),
                     13,
-                ))
+                ));
             }
             None => {
                 return Err((
                     String::from("Missing key \"phases\", which should be an array of strings"),
                     10,
-                ))
+                ));
             }
         };
 

@@ -110,7 +110,12 @@ impl Dependency {
                             javadoc,
                         })
                     }
-                    _ => Err((format!("Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."), 31)),
+                    _ => Err((
+                        format!(
+                            "Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."
+                        ),
+                        31,
+                    )),
                 }
             }
             Some(val) => Err((
@@ -121,7 +126,9 @@ impl Dependency {
                 32,
             )),
             None => Err((
-                String::from("Dependency must explicitly define its type. Fix: either add `type = \"fetchFromMaven\"`/another supported type, or move the dependency under a grouped table such as `[dependencies.maven]`."),
+                String::from(
+                    "Dependency must explicitly define its type. Fix: either add `type = \"fetchFromMaven\"`/another supported type, or move the dependency under a grouped table such as `[dependencies.maven]`.",
+                ),
                 32,
             )),
         }
@@ -140,7 +147,7 @@ impl Dependency {
                             "Dependency in group \"{group}\" has mismatched type \"{existing_type}\", expected \"{dependency_type}\".\nFix: remove the `type` key from grouped dependencies, or move this dependency to the group that matches its type."
                         ),
                         32,
-                    ))
+                    ));
                 }
                 None => {
                     return Err((
@@ -149,7 +156,7 @@ impl Dependency {
                             existing_type.type_str()
                         ),
                         32,
-                    ))
+                    ));
                 }
             }
         } else {
@@ -295,7 +302,12 @@ fn insert_dependency(
     dependency: Dependency,
 ) -> Result<(), (String, u8)> {
     if dependencies.insert(name.to_string(), dependency).is_some() {
-        return Err((format!("Duplicate dependency name \"{name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."), 33));
+        return Err((
+            format!(
+                "Duplicate dependency name \"{name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."
+            ),
+            33,
+        ));
     }
 
     Ok(())
@@ -354,7 +366,9 @@ fn insert_grouped_dependency(
         .is_some()
     {
         return Err((
-            format!("Duplicate dependency name \"{dependency_name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."),
+            format!(
+                "Duplicate dependency name \"{dependency_name}\".\nFix: dependency names must be unique across all dependency groups; rename one of them or remove the duplicate."
+            ),
             33,
         ));
     }
@@ -371,7 +385,12 @@ fn dependency_type_for_group(group: &str) -> Result<&'static str, (String, u8)> 
         "github" | "fetchFromGithub" => Ok("fetchFromGithub"),
         "local_repository" | "localRepository" => Ok("localRepository"),
         "script" | "buildFromScript" => Ok("buildFromScript"),
-        _ => Err((format!("Unknown dependency group \"{group}\". Fix: use one of [archive, folder, url, maven, github, local_repository, script]."), 31)),
+        _ => Err((
+            format!(
+                "Unknown dependency group \"{group}\". Fix: use one of [archive, folder, url, maven, github, local_repository, script]."
+            ),
+            31,
+        )),
     }
 }
 
@@ -384,7 +403,12 @@ fn group_for_dependency_type(dependency_type: &str) -> Result<&'static str, (Str
         "fetchFromGithub" => Ok("github"),
         "localRepository" => Ok("local_repository"),
         "buildFromScript" => Ok("script"),
-        _ => Err((format!("Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."), 31)),
+        _ => Err((
+            format!(
+                "Unknown dependency type \"{dependency_type}\". Fix: use one of [loadArchive, loadFolder, fetchFromUrl, fetchFromMaven, fetchFromGithub, localRepository, buildFromScript]."
+            ),
+            31,
+        )),
     }
 }
 
@@ -488,24 +512,30 @@ mod tests {
         assert!(migrate_legacy_dependency_table(&mut project).unwrap());
 
         let dependencies = project.get("dependencies").unwrap().as_table().unwrap();
-        assert!(dependencies
-            .get("maven")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("gson"));
-        assert!(dependencies
-            .get("github")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("lilac"));
-        assert!(dependencies
-            .get("archive")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("local"));
+        assert!(
+            dependencies
+                .get("maven")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("gson")
+        );
+        assert!(
+            dependencies
+                .get("github")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("lilac")
+        );
+        assert!(
+            dependencies
+                .get("archive")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("local")
+        );
         assert!(dependencies.get("type").is_none());
 
         let loaded = load_dependency_map(project.get("dependencies")).unwrap();
@@ -777,9 +807,11 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error
-            .0
-            .contains("Invalid dependency [dependencies.maven].broken"));
+        assert!(
+            error
+                .0
+                .contains("Invalid dependency [dependencies.maven].broken")
+        );
         assert!(error.0.contains("Missing key group_id"));
         assert!(error.0.contains("group_id = \"com.example\""));
         assert_eq!(error.1, 10);

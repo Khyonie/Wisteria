@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use reqwest::blocking::Client;
-use xml::{writer::XmlEvent, EmitterConfig, EventWriter};
+use xml::{EmitterConfig, EventWriter, writer::XmlEvent};
 
 use crate::dependency::Dependency;
 use crate::maven::{repository, repository::ArtifactVersion};

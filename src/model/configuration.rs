@@ -5,7 +5,13 @@ use std::{collections::HashMap, rc::Rc};
 use toml::Table;
 
 use crate::{
-    build::{run::ImplicitRunTask, task::{DefinedTask, ImplicitBuildTask, TaskRunner}}, cli::args::StartupFlags, config::toml_utils, java::compiler_flags::CompilerFlags
+    build::{
+        run::ImplicitRunTask,
+        task::{DefinedTask, ImplicitBuildTask, TaskRunner},
+    },
+    cli::args::StartupFlags,
+    config::toml_utils,
+    java::compiler_flags::CompilerFlags,
 };
 
 #[derive(Clone)]
@@ -43,7 +49,8 @@ impl Configuration {
         let entry = read_optional_string_for_configuration(&name, "entry", toml)?;
         let java_version =
             read_optional_integer_for_configuration(&name, "java_version", toml)?.unwrap_or(8);
-        let inherit: Option<String> = read_optional_string_for_configuration(&name, "inherit", toml)?;
+        let inherit: Option<String> =
+            read_optional_string_for_configuration(&name, "inherit", toml)?;
 
         let mut tasks: HashMap<String, Rc<dyn TaskRunner>> = HashMap::new();
 
@@ -64,7 +71,7 @@ impl Configuration {
                                     t.type_str()
                                 ),
                                 16,
-                            ))
+                            ));
                         }
                         None => panic!(),
                     };
@@ -77,7 +84,7 @@ impl Configuration {
                         v.type_str()
                     ),
                     16,
-                ))
+                ));
             }
             None => {}
         }
@@ -92,10 +99,17 @@ impl Configuration {
                 let t = t.as_table().unwrap();
 
                 for (key, value) in t {
-                    match value.as_str()
-                    {
+                    match value.as_str() {
                         Some(s) => environment.insert(key.clone(), s.to_string()),
-                        None => return Err((format!("Invalid [configuration.{name}.environment].{key}: expected a string, found {}.\nFix: environment values must be quoted strings, for example `{key} = \"value\"`.", value.type_str()), 15))
+                        None => {
+                            return Err((
+                                format!(
+                                    "Invalid [configuration.{name}.environment].{key}: expected a string, found {}.\nFix: environment values must be quoted strings, for example `{key} = \"value\"`.",
+                                    value.type_str()
+                                ),
+                                15,
+                            ));
+                        }
                     };
                 }
             }
@@ -106,7 +120,7 @@ impl Configuration {
                         v.type_str()
                     ),
                     15,
-                ))
+                ));
             }
             None => {}
         }
@@ -129,7 +143,7 @@ impl Configuration {
                         v.type_str()
                     ),
                     16,
-                ))
+                ));
             }
             None => None,
         };
@@ -196,14 +210,12 @@ impl Configuration {
 
     pub fn apply_implicit(&mut self, flags: StartupFlags) {
         if self.sources.is_some() {
-            if self.targets().is_some()
-            {
+            if self.targets().is_some() {
                 self.tasks
                     .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
             }
 
-            if self.entry.is_some()
-            {
+            if self.entry.is_some() {
                 self.tasks
                     .insert(String::from("run"), Rc::new(ImplicitRunTask::new(flags)));
             }
@@ -402,15 +414,24 @@ mod tests {
 
         assert_eq!(configuration.java_version(), 8);
         assert_eq!(
-            configuration.environment().get("project_name").map(String::as_str),
+            configuration
+                .environment()
+                .get("project_name")
+                .map(String::as_str),
             Some("Demo")
         );
         assert_eq!(
-            configuration.environment().get("configuration").map(String::as_str),
+            configuration
+                .environment()
+                .get("configuration")
+                .map(String::as_str),
             Some("main")
         );
         assert_eq!(
-            configuration.environment().get("version").map(String::as_str),
+            configuration
+                .environment()
+                .get("version")
+                .map(String::as_str),
             Some("1.0.0")
         );
     }
@@ -442,12 +463,18 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(configuration.sources().unwrap(), &vec![String::from("src/")]);
+        assert_eq!(
+            configuration.sources().unwrap(),
+            &vec![String::from("src/")]
+        );
         assert_eq!(
             configuration.dependencies().unwrap(),
             &vec![String::from("dep-a"), String::from("dep-b")]
         );
-        assert_eq!(configuration.shaded().unwrap(), &vec![String::from("dep-b")]);
+        assert_eq!(
+            configuration.shaded().unwrap(),
+            &vec![String::from("dep-b")]
+        );
         assert_eq!(
             configuration.includes().unwrap(),
             &vec![String::from("plugin.yml")]
@@ -456,22 +483,32 @@ mod tests {
             configuration.targets().unwrap(),
             &vec![String::from("target/demo.jar")]
         );
-        assert_eq!(configuration.entry().map(String::as_str), Some("com.example.Main"));
+        assert_eq!(
+            configuration.entry().map(String::as_str),
+            Some("com.example.Main")
+        );
         assert_eq!(configuration.java_version(), 21);
         assert_eq!(
-            configuration.environment().get("channel").map(String::as_str),
+            configuration
+                .environment()
+                .get("channel")
+                .map(String::as_str),
             Some("stable")
         );
-        assert!(configuration
-            .compiler_flags()
-            .unwrap()
-            .contains(&CompilerFlags::StoreParameterNames { setting: true }));
-        assert!(configuration
-            .compiler_flags()
-            .unwrap()
-            .contains(&CompilerFlags::Encoding {
-                encoding: String::from("UTF-8")
-            }));
+        assert!(
+            configuration
+                .compiler_flags()
+                .unwrap()
+                .contains(&CompilerFlags::StoreParameterNames { setting: true })
+        );
+        assert!(
+            configuration
+                .compiler_flags()
+                .unwrap()
+                .contains(&CompilerFlags::Encoding {
+                    encoding: String::from("UTF-8")
+                })
+        );
     }
 
     #[test]
@@ -547,10 +584,7 @@ mod tests {
             child.dependencies().unwrap(),
             &vec![String::from("dep-b"), String::from("dep-a")]
         );
-        assert_eq!(
-            child.includes().unwrap(),
-            &vec![String::from("plugin.yml")]
-        );
+        assert_eq!(child.includes().unwrap(), &vec![String::from("plugin.yml")]);
         assert_eq!(
             child.targets().unwrap(),
             &vec![String::from("target/base.jar")]
@@ -580,8 +614,16 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Invalid [configuration.main.environment].port"));
-        assert!(error.0.contains("environment values must be quoted strings"));
+        assert!(
+            error
+                .0
+                .contains("Invalid [configuration.main.environment].port")
+        );
+        assert!(
+            error
+                .0
+                .contains("environment values must be quoted strings")
+        );
         assert_eq!(error.1, 15);
     }
 
@@ -614,7 +656,11 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Invalid [configuration.main].java_version"));
+        assert!(
+            error
+                .0
+                .contains("Invalid [configuration.main].java_version")
+        );
         assert!(error.0.contains("expected a number from 0 to 255"));
         assert_eq!(error.1, 14);
     }

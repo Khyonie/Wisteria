@@ -36,26 +36,31 @@ pub fn get_artifact(
         from_str(&version_text).map_err(|e| format!("Could not decode maven metadata: {e}"))?;
 
     let target_version = match version {
-        ArtifactVersion::Latest => {
-            match metadata.latest() {
-                Some(v) => v.clone(),
-                None => return Err(format!("Artifact {artifact_id} does not specify a latest version, must explicitly specify a version"))
+        ArtifactVersion::Latest => match metadata.latest() {
+            Some(v) => v.clone(),
+            None => {
+                return Err(format!(
+                    "Artifact {artifact_id} does not specify a latest version, must explicitly specify a version"
+                ));
             }
         },
-        ArtifactVersion::Release => {
-            match metadata.release() {
-                Some(v) => v.clone(),
-                None => return Err(format!("Artifact {artifact_id} does not specify a release version, must explicitly specify a version"))
+        ArtifactVersion::Release => match metadata.release() {
+            Some(v) => v.clone(),
+            None => {
+                return Err(format!(
+                    "Artifact {artifact_id} does not specify a release version, must explicitly specify a version"
+                ));
             }
         },
         ArtifactVersion::Version { version } => {
-            if !metadata.versions().contains(version)
-            {
-                return Err(format!("Artifact {artifact_id} does not have a version {version}"))
+            if !metadata.versions().contains(version) {
+                return Err(format!(
+                    "Artifact {artifact_id} does not have a version {version}"
+                ));
             }
 
             version.clone()
-        },
+        }
     };
 
     // Check if there we're dealing with a snapshot-based repository
@@ -85,7 +90,11 @@ pub fn get_artifact(
                 url_postfix = "/";
             }
 
-            return Ok(format!("{url}{url_postfix}{}/{}/{target_version}/{artifact_id}-{target_version}{classifier_postfix}.jar", group_id.replace(".", "/"), artifact_id.replace(".", "/")));
+            return Ok(format!(
+                "{url}{url_postfix}{}/{}/{target_version}/{artifact_id}-{target_version}{classifier_postfix}.jar",
+                group_id.replace(".", "/"),
+                artifact_id.replace(".", "/")
+            ));
         }
     };
 
@@ -107,11 +116,15 @@ pub fn get_artifact(
         None => {
             return Err(format!(
                 "The given classifier is not valid for artifact {artifact_id}-{target_version}"
-            ))
+            ));
         }
     };
 
-    Ok(format!("{url}{url_postfix}{}/{}/{target_version}/{artifact_id}-{target_value}{classifier_postfix}.jar", group_id.replace(".", "/"), artifact_id.replace(".", "/"), ))
+    Ok(format!(
+        "{url}{url_postfix}{}/{}/{target_version}/{artifact_id}-{target_value}{classifier_postfix}.jar",
+        group_id.replace(".", "/"),
+        artifact_id.replace(".", "/"),
+    ))
 }
 
 pub fn get_version(
@@ -140,26 +153,31 @@ pub fn get_version(
         from_str(&version_text).map_err(|e| format!("Could not decode maven metadata: {e}"))?;
 
     let target_version = match version {
-        ArtifactVersion::Latest => {
-            match metadata.latest() {
-                Some(v) => v.clone(),
-                None => return Err(format!("Artifact {artifact_id} does not specify a latest version, must explicitly specify a version"))
+        ArtifactVersion::Latest => match metadata.latest() {
+            Some(v) => v.clone(),
+            None => {
+                return Err(format!(
+                    "Artifact {artifact_id} does not specify a latest version, must explicitly specify a version"
+                ));
             }
         },
-        ArtifactVersion::Release => {
-            match metadata.release() {
-                Some(v) => v.clone(),
-                None => return Err(format!("Artifact {artifact_id} does not specify a release version, must explicitly specify a version"))
+        ArtifactVersion::Release => match metadata.release() {
+            Some(v) => v.clone(),
+            None => {
+                return Err(format!(
+                    "Artifact {artifact_id} does not specify a release version, must explicitly specify a version"
+                ));
             }
         },
         ArtifactVersion::Version { version } => {
-            if !metadata.versions().contains(version)
-            {
-                return Err(format!("Artifact {artifact_id} does not have a version {version}"))
+            if !metadata.versions().contains(version) {
+                return Err(format!(
+                    "Artifact {artifact_id} does not have a version {version}"
+                ));
             }
 
             version.clone()
-        },
+        }
     };
 
     // Check if there we're dealing with a snapshot-based repository

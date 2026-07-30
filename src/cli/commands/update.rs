@@ -69,7 +69,9 @@ pub fn trigger_update(
         if !project.dependencies().contains_key(a) {
             println!("No such dependency \"{}\" has been defined.", a);
             if project.dependencies().is_empty() {
-                println!("Fix: add dependencies under a table such as `[dependencies.maven]`, or run `wisteria update all` only after dependencies are configured.");
+                println!(
+                    "Fix: add dependencies under a table such as `[dependencies.maven]`, or run `wisteria update all` only after dependencies are configured."
+                );
             } else {
                 println!("Valid dependencies:");
                 let mut dependencies: Vec<&str> =

@@ -6,7 +6,7 @@ use std::{
 
 use crate::cli::args::StartupFlags;
 use crate::cli::commands::print_header;
-use crate::generators::{generate_wisteria_project, WISTERIA_METADATA_TEMPLATE};
+use crate::generators::{WISTERIA_METADATA_TEMPLATE, generate_wisteria_project};
 use crate::util::consts;
 
 pub fn trigger_create(args: &[String], flags: &StartupFlags) {
@@ -22,18 +22,17 @@ pub fn trigger_create(args: &[String], flags: &StartupFlags) {
     }
 
     if create_dir(&path).is_err() {
-        println!("Could not create a new project \"{}\" in the current directory. Ensure that you have the correct permissions and try again.", args[2]);
+        println!(
+            "Could not create a new project \"{}\" in the current directory. Ensure that you have the correct permissions and try again.",
+            args[2]
+        );
         exit(1)
     }
 
     print_header();
 
     create_dir(path.join(consts::WISTERIA_DIR)).unwrap();
-    write(
-        path.join(consts::METADATA_FILE),
-        WISTERIA_METADATA_TEMPLATE,
-    )
-    .unwrap();
+    write(path.join(consts::METADATA_FILE), WISTERIA_METADATA_TEMPLATE).unwrap();
     write(
         path.join(consts::PROJECT_FILE),
         generate_wisteria_project(&args[2], flags.minimal),

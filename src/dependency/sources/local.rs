@@ -20,7 +20,12 @@ pub fn resolve_file(
     }
 
     if pathbuf.is_dir() {
-        return Err((format!("Dependency \"{path}\" is a file, not a library. To load a folder, use a \"loadFolder\" dependency type"), 63));
+        return Err((
+            format!(
+                "Dependency \"{path}\" is a file, not a library. To load a folder, use a \"loadFolder\" dependency type"
+            ),
+            63,
+        ));
     }
 
     let canon_path = match pathbuf.canonicalize() {

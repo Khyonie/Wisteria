@@ -1,6 +1,6 @@
 use std::{fs::File, io::copy};
 
-use reqwest::{blocking::Client, StatusCode};
+use reqwest::{StatusCode, blocking::Client};
 
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 
@@ -17,7 +17,7 @@ pub fn download(name: String, url: String, filepath: String) -> Result<(), (Stri
                         .as_str()
                 ),
                 1,
-            ))
+            ));
         }
     };
 
@@ -38,7 +38,7 @@ pub fn download(name: String, url: String, filepath: String) -> Result<(), (Stri
             return Err((
                 format!("Could not copy from URL {url} into file {filepath}: {e}"),
                 1,
-            ))
+            ));
         }
     };
 

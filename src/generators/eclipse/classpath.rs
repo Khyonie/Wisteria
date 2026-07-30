@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use regex::Regex;
-use xml::{common::XmlVersion, writer::XmlEvent, EmitterConfig, EventWriter};
+use xml::{EmitterConfig, EventWriter, common::XmlVersion, writer::XmlEvent};
 
 use crate::dependency::{Dependency, UpdateContext};
 use crate::model::{Configuration, Project};

@@ -2,7 +2,11 @@ use std::{collections::HashMap, path::PathBuf};
 
 use regex::Regex;
 
-use crate::{model::{Configuration, Project}, project::UpdateContext, util::consts};
+use crate::{
+    model::{Configuration, Project},
+    project::UpdateContext,
+    util::consts,
+};
 
 pub struct ResolvedDependencies {
     paths: Vec<PathBuf>,
@@ -10,20 +14,16 @@ pub struct ResolvedDependencies {
     classpath: Option<String>,
 }
 
-impl ResolvedDependencies
-{
-    pub fn paths(&self) -> &[PathBuf]
-    {
+impl ResolvedDependencies {
+    pub fn paths(&self) -> &[PathBuf] {
         &self.paths
     }
 
-    pub fn shaded_jars(&self) -> &[PathBuf]
-    {
+    pub fn shaded_jars(&self) -> &[PathBuf] {
         &self.shaded_jars
     }
 
-    pub fn classpath(&self) -> Option<String>
-    {
+    pub fn classpath(&self) -> Option<String> {
         self.classpath.clone()
     }
 }

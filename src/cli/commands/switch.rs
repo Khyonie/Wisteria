@@ -29,7 +29,9 @@ pub fn trigger_switch(
     print_header();
 
     if metadata.configuration == args[2] {
-        println!("Project is already set to use that configuration. To reload the project configuration, use \"wisteria refresh\" instead.");
+        println!(
+            "Project is already set to use that configuration. To reload the project configuration, use \"wisteria refresh\" instead."
+        );
         exit(1)
     }
 
@@ -68,7 +70,10 @@ pub fn trigger_switch(
         exit(0)
     }
 
-    println!("Operation complete with dependency resolution errors. Your project is now set up to use the configuration \"{}\".", args[2]);
+    println!(
+        "Operation complete with dependency resolution errors. Your project is now set up to use the configuration \"{}\".",
+        args[2]
+    );
     println!("Failed to resolve the following dependencies:");
     for (name, error) in failed_downloads {
         println!("- {name}: {error}")

@@ -9,7 +9,7 @@ use crate::{
 
 pub struct ImplicitRunTask {
     order: Vec<String>,
-    flags: StartupFlags
+    flags: StartupFlags,
 }
 
 impl ImplicitRunTask {
@@ -22,13 +22,12 @@ impl ImplicitRunTask {
                 String::from("package"),
                 String::from("run"),
             ],
-            flags
+            flags,
         }
     }
 }
 
-impl TaskRunner for ImplicitRunTask
-{
+impl TaskRunner for ImplicitRunTask {
     fn invoke(
         &self,
         info: &ProjectInfo,
@@ -45,19 +44,15 @@ impl TaskRunner for ImplicitRunTask
     }
 }
 
-impl ImplicitRunTask
-{
-    fn run(&self) -> Result<(), (String, u8)>
-    {
+impl ImplicitRunTask {
+    fn run(&self) -> Result<(), (String, u8)> {
         let mut java_command = Command::new("java");
         java_command.args(["-jar", consts::TARGET_JAR_PATH]);
         java_command.args(&self.flags.passed_args);
 
         let status = match java_command.status() {
             Ok(s) => s,
-            Err(e) => {
-                return Err((format!("Failed to start Java process: {e}"), 1))
-            }
+            Err(e) => return Err((format!("Failed to start Java process: {e}"), 1)),
         };
 
         if !status.success() {

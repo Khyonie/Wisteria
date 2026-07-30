@@ -33,8 +33,10 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
                     let copy_path = format!("{}/{}", consts::SOURCE_OUT_PATH, relative_path);
                     let mut path = PathBuf::from(&copy_path);
                     path.pop();
-                    fs::create_dir_all(path).unwrap();
-                    File::create(&copy_path).unwrap();
+                    fs::create_dir_all(path)
+                        .map_err(|e| (format!("Failed to create directory: {e}"), 1))?;
+                    File::create(&copy_path)
+                        .map_err(|e| (format!("Failed to create relative path: {e}"), 1))?;
 
                     match fs::copy(f, &copy_path) {
                         Ok(_) => {}
@@ -60,7 +62,7 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
     use toml::Table;
 
@@ -96,7 +98,11 @@ mod tests {
 
             assert_eq!(copied.len(), 2);
             assert!(temp.path().join(".wisteria/work/src/Main.java").exists());
-            assert!(temp.path().join(".wisteria/work/src/nested/Other.java").exists());
+            assert!(
+                temp.path()
+                    .join(".wisteria/work/src/nested/Other.java")
+                    .exists()
+            );
             assert!(!temp.path().join(".wisteria/work/src/notes.txt").exists());
         });
     }

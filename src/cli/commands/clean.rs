@@ -34,14 +34,21 @@ pub fn trigger_clean(args: &[String]) {
             }
         }
         "metadata" => {
-            let _ = fs::write(consts::METADATA_FILE, generate_metadata(&Metadata::default()));
+            let _ = fs::write(
+                consts::METADATA_FILE,
+                generate_metadata(&Metadata::default()),
+            );
             println!("Operation complete.");
             exit(0)
         }
         "natures" => {
-            for (index, nature) in Nature::values().iter().enumerate()
-            {
-                print!("{}/{} Removing nature {}... ", index + 1, Nature::values().len(), nature.type_str());
+            for (index, nature) in Nature::values().iter().enumerate() {
+                print!(
+                    "{}/{} Removing nature {}... ",
+                    index + 1,
+                    Nature::values().len(),
+                    nature.type_str()
+                );
                 match nature.remove_nature() {
                     Ok(_) => println!("Done!"),
                     Err(e) => {

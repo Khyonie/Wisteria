@@ -5,7 +5,7 @@ use toml::Table;
 use crate::{
     cli::args::StartupFlags,
     config::toml_utils,
-    dependency::{load_dependency_map, migrate_legacy_dependency_table, Dependency},
+    dependency::{Dependency, load_dependency_map, migrate_legacy_dependency_table},
     model::Configuration,
     util::consts,
     workspace::nature::Nature,
@@ -83,16 +83,28 @@ impl Project {
                     let mut configurations: HashMap<String, Configuration> = HashMap::new();
 
                     for key in v.keys() {
-                        match v.get(key)
-                        {
+                        match v.get(key) {
                             Some(config) if config.is_table() => {
-                                let mut configuration = Configuration::from(key.clone(), config.as_table().unwrap(), name.clone(), version.clone())
-                                    .map_err(|error| contextual_configuration_load_error(key, error))?;
+                                let mut configuration = Configuration::from(
+                                    key.clone(),
+                                    config.as_table().unwrap(),
+                                    name.clone(),
+                                    version.clone(),
+                                )
+                                .map_err(|error| contextual_configuration_load_error(key, error))?;
                                 configuration.apply_implicit(flags.clone());
                                 configurations.insert(key.clone(), configuration)
                             }
-                            Some(v) => return Err((format!("Invalid [configuration.{key}]: expected a table, found {}.\nFix: define configurations as tables, for example `[configuration.{key}]` followed by keys like `sources` and `targets`.", v.type_str()), 16)),
-                            None => None
+                            Some(v) => {
+                                return Err((
+                                    format!(
+                                        "Invalid [configuration.{key}]: expected a table, found {}.\nFix: define configurations as tables, for example `[configuration.{key}]` followed by keys like `sources` and `targets`.",
+                                        v.type_str()
+                                    ),
+                                    16,
+                                ));
+                            }
+                            None => None,
                         };
                     }
 
@@ -100,13 +112,25 @@ impl Project {
                     for (config_name, configuration) in configurations.iter() {
                         if let Some(target) = configuration.inherits() {
                             if config_name.eq(target) {
-                                return Err((format!("Configuration \"{config_name}\" cannot inherit from itself.\nFix: remove `inherit = \"{target}\"` from [configuration.{config_name}], or point it at a different configuration."), 40));
+                                return Err((
+                                    format!(
+                                        "Configuration \"{config_name}\" cannot inherit from itself.\nFix: remove `inherit = \"{target}\"` from [configuration.{config_name}], or point it at a different configuration."
+                                    ),
+                                    40,
+                                ));
                             }
 
-                            let target = match configurations.get(target)
-                            {
+                            let target = match configurations.get(target) {
                                 Some(c) => c,
-                                None => return Err((format!("No such configuration \"{target}\" to be inherited by \"{config_name}\".\nFix: create `[configuration.{target}]`, or change `inherit` in [configuration.{config_name}] to one of: {}.", configuration_names(&configurations)), 41))
+                                None => {
+                                    return Err((
+                                        format!(
+                                            "No such configuration \"{target}\" to be inherited by \"{config_name}\".\nFix: create `[configuration.{target}]`, or change `inherit` in [configuration.{config_name}] to one of: {}.",
+                                            configuration_names(&configurations)
+                                        ),
+                                        41,
+                                    ));
+                                }
                             };
 
                             let mut inheritor: Configuration = configuration.clone();
@@ -129,7 +153,7 @@ impl Project {
                             v.type_str()
                         ),
                         16,
-                    ))
+                    ));
                 }
                 None => HashMap::new(),
             },
@@ -195,7 +219,9 @@ impl Project {
         for c in self.info.configurations.values() {
             c.print_info()
         }
-        println!("│\t*Depending on the configuration, Wisteria may automatically provide tasks such as \"build\".")
+        println!(
+            "│\t*Depending on the configuration, Wisteria may automatically provide tasks such as \"build\"."
+        )
     }
 }
 
@@ -227,10 +253,7 @@ fn read_project_optional_string(key: &str, toml: &Table) -> Result<Option<String
         .map_err(|error| contextual_project_error(key, error))
 }
 
-fn read_project_string_array(
-    key: &str,
-    toml: &Table,
-) -> Result<Option<Vec<String>>, (String, u8)> {
+fn read_project_string_array(key: &str, toml: &Table) -> Result<Option<Vec<String>>, (String, u8)> {
     toml_utils::read_optional_string_array(key, toml)
         .map_err(|error| contextual_project_error(key, error))
 }
@@ -251,7 +274,7 @@ fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, (String, u8)> {
                         "Invalid [project].natures entry \"{nature}\".\nFix: supported natures are `eclipse` and `maven`; remove the value or use `natures = [ \"eclipse\", \"maven\" ]`."
                     ),
                     31,
-                ))
+                ));
             }
         }
     }
@@ -260,10 +283,7 @@ fn read_project_natures(toml: &Table) -> Result<Vec<Nature>, (String, u8)> {
 }
 
 fn contextual_project_error(key: &str, error: (String, u8)) -> (String, u8) {
-    (
-        format!("Invalid [project].{key}: {}", error.0),
-        error.1,
-    )
+    (format!("Invalid [project].{key}: {}", error.0), error.1)
 }
 
 fn contextual_configuration_load_error(

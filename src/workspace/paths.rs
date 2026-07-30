@@ -25,7 +25,7 @@ pub fn resolve_filepath(
                             "Use of undefined environmental variable \"{key}\" in path \"{path}\""
                         ),
                         61,
-                    ))
+                    ));
                 }
             };
         }
@@ -71,7 +71,7 @@ fn resolve_os_var(unix: &str, windows: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
 
     fn regexes() -> HashMap<&'static str, Regex> {
         let mut regexes = HashMap::new();
@@ -102,8 +102,8 @@ mod tests {
 
     #[test]
     fn fails_on_unknown_environment_placeholder() {
-        let error = resolve_filepath("target/{missing}.jar", &environment(), &regexes())
-            .unwrap_err();
+        let error =
+            resolve_filepath("target/{missing}.jar", &environment(), &regexes()).unwrap_err();
 
         assert!(error.0.contains("undefined environmental variable"));
         assert_eq!(error.1, 61);
@@ -114,12 +114,15 @@ mod tests {
         let temp = TempDir::new("paths-relative");
 
         with_current_dir(temp.path(), || {
-            let resolved = resolve_filepath("./target/app.jar", &environment(), &regexes())
-                .unwrap();
+            let resolved =
+                resolve_filepath("./target/app.jar", &environment(), &regexes()).unwrap();
 
             assert_eq!(
                 resolved,
-                temp.path().join("target/app.jar").to_string_lossy().to_string()
+                temp.path()
+                    .join("target/app.jar")
+                    .to_string_lossy()
+                    .to_string()
             );
         });
     }

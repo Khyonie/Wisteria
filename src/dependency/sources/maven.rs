@@ -42,7 +42,10 @@ pub fn resolve(
     ) {
         Ok(t) => t,
         Err(e) => {
-            return Err((format!("Failed to get Maven repository version information: {e}"), 1))
+            return Err((
+                format!("Failed to get Maven repository version information: {e}"),
+                1,
+            ));
         }
     };
 
@@ -72,9 +75,7 @@ pub fn resolve(
             &target_version,
         ) {
             Ok(t) => t,
-            Err(e) => {
-                return Err((format!("Failed to get Maven repository artifact: {e}"), 1))
-            }
+            Err(e) => return Err((format!("Failed to get Maven repository artifact: {e}"), 1)),
         };
 
         download::download(artifact_id.to_string(), target_url, filepath)?;

@@ -29,7 +29,9 @@ pub fn run() {
         }
         "update" => commands::update::trigger_update(project, &args, &flags),
         "clean" if args.len() == 2 => {
-            println!("Not enough arguments. Expected one of [ classes, dependencies, all ], but nothing was supplied.");
+            println!(
+                "Not enough arguments. Expected one of [ classes, dependencies, all ], but nothing was supplied."
+            );
             exit(1)
         }
         "clean" => commands::clean::trigger_clean(&args),

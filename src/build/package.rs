@@ -37,10 +37,13 @@ pub fn package_jar(
 
     let manifest_path = PathBuf::from(consts::MANIFEST_DIR);
     if manifest_path.exists() {
-        fs::remove_dir_all(consts::MANIFEST_DIR).unwrap();
+        fs::remove_dir_all(consts::MANIFEST_DIR)
+            .map_err(|e| (format!("Failed to remove manifest path: {e}"), 1))?;
     }
-    fs::create_dir_all(manifest_path).unwrap();
-    fs::write(consts::MANIFEST_FILE, manifest.to_file()).unwrap();
+    fs::create_dir_all(manifest_path)
+        .map_err(|e| (format!("Failed to create manifest path: {e}"), 1))?;
+    fs::write(consts::MANIFEST_FILE, manifest.to_file())
+        .map_err(|e| (format!("Failed to write manifest file: {e}"), 1))?;
 
     let mut jar_command = Command::new("jar");
     jar_command.args(["-cMf", consts::TARGET_JAR_PATH]);

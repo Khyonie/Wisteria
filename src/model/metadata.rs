@@ -2,7 +2,10 @@ use std::fs::read_to_string;
 
 use toml::Table;
 
-use crate::{config::toml_utils::{read_boolean, read_string}, util::consts::{self, METADATA_FILE}};
+use crate::{
+    config::toml_utils::{read_boolean, read_string},
+    util::consts::{self, METADATA_FILE},
+};
 
 /// Project-local Wisteria state stored in `.wisteria/metadata.toml`.
 pub struct Metadata {
@@ -10,17 +13,26 @@ pub struct Metadata {
     pub configuration: String,
 }
 
-impl Default for Metadata
-{
+impl Default for Metadata {
     fn default() -> Self {
-        Self { dirty: false, configuration: String::from("main") }
+        Self {
+            dirty: false,
+            configuration: String::from("main"),
+        }
     }
 }
 
 impl Metadata {
     pub fn load() -> Result<Self, (String, u8)> {
-        let toml_string =
-            read_to_string(consts::METADATA_FILE).map_err(|e| (format!("Failed to read metadata file at {}: {e}", consts::METADATA_FILE), 1))?;
+        let toml_string = read_to_string(consts::METADATA_FILE).map_err(|e| {
+            (
+                format!(
+                    "Failed to read metadata file at {}: {e}",
+                    consts::METADATA_FILE
+                ),
+                1,
+            )
+        })?;
 
         let toml: Table = toml_string.parse::<Table>()
             .map_err(| e | (format!("Invalid or corrupt Wisteria metadata file. Fix \"{}\" in your favorite text editor, or run \"wisteria clean metadata\": {e}", METADATA_FILE), 1))?;
@@ -39,7 +51,7 @@ impl Metadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
 
     #[test]
@@ -97,7 +109,11 @@ mod tests {
                 Err(error) => error,
             };
 
-            assert!(error.0.contains("Invalid or corrupt Wisteria metadata file"));
+            assert!(
+                error
+                    .0
+                    .contains("Invalid or corrupt Wisteria metadata file")
+            );
             assert_eq!(error.1, 1);
         });
     }

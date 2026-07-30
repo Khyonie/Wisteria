@@ -13,7 +13,7 @@ pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), (String, u8)> {
                 return Err((
                     format!("Failed to open jar {}: {e}", shaded.to_string_lossy()),
                     1,
-                ))
+                ));
             }
         };
 
@@ -23,7 +23,7 @@ pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), (String, u8)> {
                 return Err((
                     format!("Failed to open jar {}: {e}", shaded.to_string_lossy()),
                     1,
-                ))
+                ));
             }
         };
 

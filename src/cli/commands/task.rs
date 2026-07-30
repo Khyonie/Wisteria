@@ -22,7 +22,10 @@ pub fn trigger_task(project: Result<Project, (String, u8)>, args: &[String]) {
                 "No task named \"{}\" exists for configuration \"{}\".",
                 args[1], metadata.configuration
             );
-            println!("Fix: run `wisteria info` to see available tasks, or define `[configuration.{}.task.{}]` in project.toml.", metadata.configuration, args[1]);
+            println!(
+                "Fix: run `wisteria info` to see available tasks, or define `[configuration.{}.task.{}]` in project.toml.",
+                metadata.configuration, args[1]
+            );
             exit(1)
         }
     };
