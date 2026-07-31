@@ -23,6 +23,10 @@ gson = { group_id = "com.google.code.gson", artifact_id = "gson" }
 sources = [ "src/" ]
 dependencies = [  ] 
 targets = [ "targets/{configuration}/{project_name}-{configuration}-{version}.jar" ]
+
+[configuration.main.javadoc]
+output-dir = "targets/javadoc/"
+target = "targets/{configuration}/{project_name}-{configuration}-{version}-javadoc.jar"
 ```
 
 ## Usage:
@@ -49,7 +53,14 @@ Like build, this compiles all .java source files defined in the current project 
 
 Example: `-$ wisteria run -- -Xms4g -Xmx8g`
 
-For a configuration te be valid for running, it must define `sources` and `entry`.
+For a configuration to be valid for running, it must define `sources` and `entry`.
+
+### Generate Javadocs for the current project configuration
+`-$ wisteria javadocs`
+
+Generates Javadocs for all .java source files inside the source folder(s) defined in the current project configuration. Javadocs are written to `javadoc.output-dir` when configured, or `target/javadoc/{configuration}/` by default.
+
+If `javadoc.target` is configured, Wisteria packages the generated Javadoc files into a .jar at that target path.
 
 ### Switch the project configuration
 `-$ wisteria switch <configuration>`
@@ -71,6 +82,11 @@ Applicable dependencies may be updated with this action as well.
 Downloads a specific Maven or Github dependency as defined under a `[dependencies.<source>]` table in `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
 
 If "all" is specified as the dependency, all applicable dependencies will be updated.
+
+### Clean generated files
+`-$ wisteria clean <classes | dependencies | targets | javadocs | metadata | natures | all>`
+
+Removes generated files for the selected target. `targets` removes jar files defined by the active configuration, including a configured `javadoc.target`. `javadocs` removes the configured Javadoc output directory and configured Javadoc jar. `all` includes both of those plus the existing classes, dependency cache, metadata, and nature cleanup.
 
 ### Migrate a Wisteria 2 project
 `-$ wisteria migrate wisteria2`
@@ -136,6 +152,10 @@ entry = "com.example.App" # Defines the entry point of the .jar file, making it 
 shaded = [ "maven-library" ] # Shades the given library into the final .jar after packaging
 includes = [ "metadata.json" ] # Defines what non-java files should be added into the final .jar
 java_version = 14 # Defines the minimum java version the final .jar will be compatible with
+
+[configuration.main.javadoc]
+output-dir = "targets/javadoc/" # Optional; defaults to target/javadoc/{configuration}/
+target = "targets/{configuration}/{project_name}-{configuration}-{version}-javadoc.jar" # Optional; packages generated Javadocs into this .jar when present
 
 # Multiple configurations can be added, and settings can be copied from one to another using "inherit"
 [configuration.testing]

@@ -1,6 +1,7 @@
 pub mod compile;
 pub mod defined;
 pub mod implicit;
+pub mod javadoc;
 pub mod package;
 pub mod resolve;
 pub mod run;
