@@ -25,7 +25,10 @@ pub fn maven_cache_path(
 }
 
 pub fn github_cache_path(username: &str, repository: &str, tag: &str) -> String {
-    format!("{}/{username}/{repository}/{tag}/{repository}.jar", consts::CACHE_PATH)
+    format!(
+        "{}/{username}/{repository}/{tag}/{repository}.jar",
+        consts::CACHE_PATH
+    )
 }
 
 #[cfg(test)]
@@ -34,7 +37,10 @@ mod tests {
 
     #[test]
     fn builds_url_cache_path_from_dependency_name() {
-        assert_eq!(url_cache_path("library"), ".wisteria/cache/library/library.jar");
+        assert_eq!(
+            url_cache_path("library"),
+            ".wisteria/cache/library/library.jar"
+        );
     }
 
     #[test]

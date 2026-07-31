@@ -73,17 +73,15 @@ impl Dependency {
         }
     }
 
-    pub fn javadoc(&self) -> Option<&String>
-    {
-        match self
-        {
+    pub fn javadoc(&self) -> Option<&String> {
+        match self {
             Dependency::LocalFile { javadoc, .. } => javadoc.as_ref(),
             Dependency::LocalRepository { javadoc, .. } => javadoc.as_ref(),
             Dependency::FetchFromUrl { javadoc, .. } => javadoc.as_ref(),
             Dependency::FetchFromMaven { javadoc, .. } => javadoc.as_ref(),
-            Dependency::FetchFromGithub { javadoc , ..} => javadoc.as_ref(),
+            Dependency::FetchFromGithub { javadoc, .. } => javadoc.as_ref(),
             Dependency::BuildFromScript { javadoc, .. } => javadoc.as_ref(),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -146,16 +144,13 @@ pub enum GithubReleaseType {
 }
 
 impl GithubReleaseType {
-    pub fn load(value: &str) -> Result<Self, (String, u8)> {
+    pub fn load(value: &str) -> Result<Self, String> {
         match value {
             "release" => Ok(Self::Release),
             "prerelease" | "pre-release" => Ok(Self::Prerelease),
             "any" => Ok(Self::Any),
-            _ => Err((
-                format!(
-                    "Unexpected GitHub release type, expected one of [release, prerelease, pre-release, any], found {value}"
-                ),
-                30,
+            _ => Err(format!(
+                "Unexpected GitHub release type, expected one of [release, prerelease, pre-release, any], found {value}"
             )),
         }
     }

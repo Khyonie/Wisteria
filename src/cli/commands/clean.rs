@@ -16,7 +16,7 @@ use crate::{
 const VALID_CLEAN_TARGETS: &str =
     "[ classes, dependencies, targets, javadocs, metadata, natures, all ]";
 
-pub fn trigger_clean(project: Result<Project, (String, u8)>, args: &[String]) {
+pub fn trigger_clean(project: Result<Project, String>, args: &[String]) {
     let result = match args[2].to_lowercase().as_str() {
         "classes" => clean_directory(
             consts::BINARY_OUT_PATH,
@@ -33,12 +33,9 @@ pub fn trigger_clean(project: Result<Project, (String, u8)>, args: &[String]) {
         "metadata" => clean_metadata(),
         "natures" => clean_natures(),
         "all" => clean_all(project),
-        _ => Err((
-            format!(
-                "Unknown clean target {}\nValid clean targets: one of {VALID_CLEAN_TARGETS}",
-                args[2]
-            ),
-            1,
+        _ => Err(format!(
+            "Unknown clean target {}\nValid clean targets: one of {VALID_CLEAN_TARGETS}",
+            args[2]
         )),
     };
 
@@ -47,14 +44,14 @@ pub fn trigger_clean(project: Result<Project, (String, u8)>, args: &[String]) {
             println!("Operation complete.");
             exit(0)
         }
-        Err((message, code)) => {
+        Err(message) => {
             println!("{message}");
-            exit(code.into())
+            exit(1)
         }
     }
 }
 
-fn clean_all(project: Result<Project, (String, u8)>) -> Result<(), (String, u8)> {
+fn clean_all(project: Result<Project, String>) -> Result<(), String> {
     let paths = configured_clean_paths(project, true, true)?;
 
     clean_directory(
@@ -72,48 +69,37 @@ fn clean_all(project: Result<Project, (String, u8)>) -> Result<(), (String, u8)>
     clean_natures()
 }
 
-fn clean_configuration_targets(project: Result<Project, (String, u8)>) -> Result<(), (String, u8)> {
+fn clean_configuration_targets(project: Result<Project, String>) -> Result<(), String> {
     let paths = configured_clean_paths(project, true, false)?;
 
     clean_paths(paths, "configured jar targets")
 }
 
-fn clean_configuration_javadocs(
-    project: Result<Project, (String, u8)>,
-) -> Result<(), (String, u8)> {
+fn clean_configuration_javadocs(project: Result<Project, String>) -> Result<(), String> {
     let paths = configured_clean_paths(project, false, true)?;
 
     clean_paths(paths, "configured javadocs")
 }
 
 fn configured_clean_paths(
-    project: Result<Project, (String, u8)>,
+    project: Result<Project, String>,
     include_targets: bool,
     include_javadocs: bool,
-) -> Result<Vec<String>, (String, u8)> {
+) -> Result<Vec<String>, String> {
     let project: Project = project.map_err(|e| {
-        (
-            format!(
-                "Could not read a Wisteria project.toml file in this directory. ({})",
-                e.0
-            ),
-            e.1,
-        )
+        format!("Could not read a Wisteria project.toml file in this directory. ({e})")
     })?;
     let metadata = load_clean_metadata()?;
     let configuration = project
         .info()
         .configurations()
         .get(&metadata.configuration)
-        .ok_or((
-            format!("No such configuration \"{}\".", metadata.configuration),
-            1,
-        ))?;
+        .ok_or_else(|| format!("No such configuration \"{}\".", metadata.configuration))?;
 
     resolve_configuration_paths(configuration, include_targets, include_javadocs)
 }
 
-fn load_clean_metadata() -> Result<Metadata, (String, u8)> {
+fn load_clean_metadata() -> Result<Metadata, String> {
     if PathBuf::from(consts::METADATA_FILE).exists() {
         Metadata::load()
     } else {
@@ -125,7 +111,7 @@ fn resolve_configuration_paths(
     configuration: &Configuration,
     include_targets: bool,
     include_javadocs: bool,
-) -> Result<Vec<String>, (String, u8)> {
+) -> Result<Vec<String>, String> {
     let regexes = envvar_regexes();
     let mut paths = Vec::new();
 
@@ -168,30 +154,26 @@ fn resolve_configuration_paths(
     Ok(paths)
 }
 
-fn clean_directory(
-    path: &str,
-    missing_message: &str,
-    error_prefix: &str,
-) -> Result<(), (String, u8)> {
+fn clean_directory(path: &str, missing_message: &str, error_prefix: &str) -> Result<(), String> {
     if !PathBuf::from(path).exists() {
         println!("{missing_message}");
         return Ok(());
     }
 
-    fs::remove_dir_all(path).map_err(|e| (format!("{error_prefix}: {e}"), 1))
+    fs::remove_dir_all(path).map_err(|e| format!("{error_prefix}: {e}"))
 }
 
-fn clean_metadata() -> Result<(), (String, u8)> {
+fn clean_metadata() -> Result<(), String> {
     fs::create_dir_all(consts::WISTERIA_DIR)
-        .map_err(|e| (format!("Could not create Wisteria metadata folder: {e}"), 1))?;
+        .map_err(|e| format!("Could not create Wisteria metadata folder: {e}"))?;
     fs::write(
         consts::METADATA_FILE,
         generate_metadata(&Metadata::default()),
     )
-    .map_err(|e| (format!("Could not reset metadata: {e}"), 1))
+    .map_err(|e| format!("Could not reset metadata: {e}"))
 }
 
-fn clean_natures() -> Result<(), (String, u8)> {
+fn clean_natures() -> Result<(), String> {
     for (index, nature) in Nature::values().iter().enumerate() {
         print!(
             "{}/{} Removing nature {}... ",
@@ -201,14 +183,14 @@ fn clean_natures() -> Result<(), (String, u8)> {
         );
         match nature.remove_nature() {
             Ok(_) => println!("Done!"),
-            Err(e) => return Err((format!("Failed to remove nature: {e}"), 1)),
+            Err(e) => return Err(format!("Failed to remove nature: {e}")),
         }
     }
 
     Ok(())
 }
 
-fn clean_paths(paths: Vec<String>, label: &str) -> Result<(), (String, u8)> {
+fn clean_paths(paths: Vec<String>, label: &str) -> Result<(), String> {
     let mut seen = HashSet::new();
     let mut removed = 0;
 
@@ -230,10 +212,10 @@ fn clean_paths(paths: Vec<String>, label: &str) -> Result<(), (String, u8)> {
     Ok(())
 }
 
-fn remove_path(path: &str) -> Result<bool, (String, u8)> {
+fn remove_path(path: &str) -> Result<bool, String> {
     let path = PathBuf::from(path);
     if path.as_os_str().is_empty() {
-        return Err((String::from("Refusing to clean an empty path"), 1));
+        return Err(String::from("Refusing to clean an empty path"));
     }
 
     if !path.exists() {
@@ -241,29 +223,18 @@ fn remove_path(path: &str) -> Result<bool, (String, u8)> {
     }
 
     if is_dangerous_clean_path(&path) {
-        return Err((
-            format!(
-                "Refusing to clean dangerous path {}",
-                path.to_string_lossy()
-            ),
-            1,
+        return Err(format!(
+            "Refusing to clean dangerous path {}",
+            path.to_string_lossy()
         ));
     }
 
     if path.is_dir() {
-        fs::remove_dir_all(&path).map_err(|e| {
-            (
-                format!("Could not remove directory {}: {e}", path.to_string_lossy()),
-                1,
-            )
-        })?;
+        fs::remove_dir_all(&path)
+            .map_err(|e| format!("Could not remove directory {}: {e}", path.to_string_lossy()))?;
     } else {
-        fs::remove_file(&path).map_err(|e| {
-            (
-                format!("Could not remove file {}: {e}", path.to_string_lossy()),
-                1,
-            )
-        })?;
+        fs::remove_file(&path)
+            .map_err(|e| format!("Could not remove file {}: {e}", path.to_string_lossy()))?;
     }
 
     Ok(true)
@@ -285,7 +256,7 @@ fn is_dangerous_clean_path(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
     use toml::Table;
 
@@ -355,8 +326,7 @@ mod tests {
         with_current_dir(temp.path(), || {
             let error = clean_paths(vec![String::from(".")], "test paths").unwrap_err();
 
-            assert!(error.0.contains("Refusing to clean dangerous path"));
-            assert_eq!(error.1, 1);
+            assert!(error.contains("Refusing to clean dangerous path"));
             assert!(temp.path().exists());
         });
     }

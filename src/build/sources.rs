@@ -7,14 +7,11 @@ use crate::model::Configuration;
 use crate::util::consts;
 use crate::workspace::files;
 
-pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (String, u8)> {
+pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, String> {
     match configuration.sources() {
         Some(sources) => {
             if sources.is_empty() {
-                return Err((
-                    String::from("No source folders given, nothing to compile"),
-                    1,
-                ));
+                return Err(String::from("No source folders given, nothing to compile"));
             }
 
             let mut copied_files: Vec<String> = Vec::new();
@@ -22,7 +19,10 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
             let _ = fs::remove_dir_all(consts::SOURCE_OUT_PATH);
 
             for source in sources {
-                let files = files::collect_files_with_extension(&PathBuf::from(source), "java");
+                let files = files::collect_files_with_extension(&PathBuf::from(source), "java")
+                    .map_err(|e| {
+                        format!("Could not collect source files from \"{source}\": {e}")
+                    })?;
                 if files.is_empty() {
                     continue;
                 }
@@ -33,16 +33,17 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
                     let copy_path = format!("{}/{}", consts::SOURCE_OUT_PATH, relative_path);
                     let mut path = PathBuf::from(&copy_path);
                     path.pop();
-                    fs::create_dir_all(path).unwrap();
-                    File::create(&copy_path).unwrap();
+                    fs::create_dir_all(path)
+                        .map_err(|e| format!("Failed to create directory: {e}"))?;
+                    File::create(&copy_path)
+                        .map_err(|e| format!("Failed to create relative path: {e}"))?;
 
-                    match fs::copy(f, &copy_path) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("{e}");
-                            continue;
-                        }
-                    }
+                    fs::copy(f, &copy_path).map_err(|e| {
+                        format!(
+                            "Failed to copy source file \"{}\" to \"{copy_path}\": {e}",
+                            f.display()
+                        )
+                    })?;
 
                     copied_files.push(copy_path);
                 }
@@ -50,17 +51,14 @@ pub fn collect_sources(configuration: &Configuration) -> Result<Vec<String>, (St
 
             Ok(copied_files)
         }
-        None => Err((
-            String::from("No source folders given, nothing to compile"),
-            1,
-        )),
+        None => Err(String::from("No source folders given, nothing to compile")),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
     use toml::Table;
 
@@ -96,7 +94,11 @@ mod tests {
 
             assert_eq!(copied.len(), 2);
             assert!(temp.path().join(".wisteria/work/src/Main.java").exists());
-            assert!(temp.path().join(".wisteria/work/src/nested/Other.java").exists());
+            assert!(
+                temp.path()
+                    .join(".wisteria/work/src/nested/Other.java")
+                    .exists()
+            );
             assert!(!temp.path().join(".wisteria/work/src/notes.txt").exists());
         });
     }
@@ -107,7 +109,27 @@ mod tests {
 
         let error = collect_sources(&configuration).unwrap_err();
 
-        assert_eq!(error.0, "No source folders given, nothing to compile");
-        assert_eq!(error.1, 1);
+        assert_eq!(error, "No source folders given, nothing to compile");
+    }
+
+    #[test]
+    fn collect_sources_errors_when_source_path_cannot_be_traversed() {
+        let temp = TempDir::new("collect-sources-unreadable");
+        let source = temp.path().join("src");
+        fs::write(&source, "").unwrap();
+
+        with_current_dir(temp.path(), || {
+            let configuration = configuration(&format!(
+                r#"
+                sources = [ "{}" ]
+                "#,
+                source.to_string_lossy()
+            ));
+
+            let error = collect_sources(&configuration).unwrap_err();
+
+            assert!(error.contains("Could not collect source files"));
+            assert!(error.contains(&source.display().to_string()));
+        });
     }
 }

@@ -4,12 +4,12 @@ use crate::{
     cli::args::StartupFlags,
     model::{Configuration, Project, ProjectInfo},
     project::{ImplicitBuildTask, TaskRunner},
-    util::consts,
+    util::{consts, exit_code},
 };
 
 pub struct ImplicitRunTask {
     order: Vec<String>,
-    flags: StartupFlags
+    flags: StartupFlags,
 }
 
 impl ImplicitRunTask {
@@ -22,19 +22,18 @@ impl ImplicitRunTask {
                 String::from("package"),
                 String::from("run"),
             ],
-            flags
+            flags,
         }
     }
 }
 
-impl TaskRunner for ImplicitRunTask
-{
+impl TaskRunner for ImplicitRunTask {
     fn invoke(
         &self,
         info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
-    ) -> Result<(), (String, u8)> {
+    ) -> Result<(), String> {
         ImplicitBuildTask::new().invoke(info, project, configuration)?;
 
         self.run()
@@ -45,27 +44,20 @@ impl TaskRunner for ImplicitRunTask
     }
 }
 
-impl ImplicitRunTask
-{
-    fn run(&self) -> Result<(), (String, u8)>
-    {
+impl ImplicitRunTask {
+    fn run(&self) -> Result<(), String> {
         let mut java_command = Command::new("java");
         java_command.args(["-jar", consts::TARGET_JAR_PATH]);
         java_command.args(&self.flags.passed_args);
 
         let status = match java_command.status() {
             Ok(s) => s,
-            Err(e) => {
-                return Err((format!("Failed to start Java process: {e}"), 1))
-            }
+            Err(e) => return Err(format!("Failed to start Java process: {e}")),
         };
 
         if !status.success() {
-            let code = status.code().unwrap_or(1);
-            return Err((
-                format!("Java process exited with status {status}"),
-                u8::try_from(code).unwrap_or(1),
-            ));
+            exit_code::record_external_process_exit_code(status);
+            return Err(format!("Java process exited with status {status}"));
         }
 
         Ok(())

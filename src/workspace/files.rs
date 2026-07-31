@@ -1,23 +1,29 @@
 use std::path::{Path, PathBuf};
 
-pub fn collect_files_with_extension(path: &Path, extension: &str) -> Vec<PathBuf> {
+pub fn collect_files_with_extension(path: &Path, extension: &str) -> Result<Vec<PathBuf>, String> {
     let mut files: Vec<PathBuf> = Vec::new();
 
-    collect_files_recursive(path, extension, &mut files);
+    collect_files_recursive(path, extension, &mut files)?;
 
-    files
+    Ok(files)
 }
 
-fn collect_files_recursive(path: &Path, extension: &str, files: &mut Vec<PathBuf>) {
+fn collect_files_recursive(
+    path: &Path,
+    extension: &str,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), String> {
     if !path.exists() {
-        return;
+        return Ok(());
     }
 
     let read = match path.read_dir() {
         Ok(r) => r,
         Err(e) => {
-            println!("Could not read source \"{}\": {e}", path.to_string_lossy());
-            return;
+            return Err(format!(
+                "Could not read directory \"{}\": {e}",
+                path.display()
+            ));
         }
     };
 
@@ -25,23 +31,27 @@ fn collect_files_recursive(path: &Path, extension: &str, files: &mut Vec<PathBuf
         let entry = match dir {
             Ok(e) => e,
             Err(e) => {
-                println!("{e}");
-                continue;
+                return Err(format!(
+                    "Could not read an entry in directory \"{}\": {e}",
+                    path.display()
+                ));
             }
         };
         let new_path = entry.path();
 
         if new_path.is_dir() {
-            collect_files_recursive(&new_path, extension, files);
+            collect_files_recursive(&new_path, extension, files)?;
             continue;
         }
 
-        if let Some(ext) = new_path.extension() {
-            if ext == extension {
-                files.push(new_path)
-            }
+        if let Some(ext) = new_path.extension()
+            && ext == extension
+        {
+            files.push(new_path)
         }
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -58,7 +68,7 @@ mod tests {
         fs::write(temp.path().join("src/nested/Other.java"), "").unwrap();
         fs::write(temp.path().join("src/nested/notes.txt"), "").unwrap();
 
-        let mut files = collect_files_with_extension(&temp.path().join("src"), "java");
+        let mut files = collect_files_with_extension(&temp.path().join("src"), "java").unwrap();
         files.sort();
 
         assert_eq!(
@@ -74,6 +84,22 @@ mod tests {
     fn collect_files_with_extension_returns_empty_for_missing_path() {
         let temp = TempDir::new("collect-files-missing");
 
-        assert!(collect_files_with_extension(&temp.path().join("missing"), "java").is_empty());
+        assert!(
+            collect_files_with_extension(&temp.path().join("missing"), "java")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn collect_files_with_extension_errors_when_path_cannot_be_read() {
+        let temp = TempDir::new("collect-files-unreadable");
+        let source_file = temp.path().join("src");
+        fs::write(&source_file, "").unwrap();
+
+        let error = collect_files_with_extension(&source_file, "java").unwrap_err();
+
+        assert!(error.contains("Could not read directory"));
+        assert!(error.contains(&source_file.display().to_string()));
     }
 }

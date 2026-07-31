@@ -60,8 +60,8 @@ fn trigger_wisteria2_migration(flags: &StartupFlags) {
             exit(0)
         }
         Err(error) => {
-            println!("Could not migrate Wisteria 2 project.toml: {}", error.0);
-            exit(error.1.into())
+            println!("Could not migrate Wisteria 2 project.toml: {error}");
+            exit(1)
         }
     }
 }

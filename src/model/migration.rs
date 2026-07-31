@@ -39,16 +39,11 @@ struct MigratedProjectToml {
     configuration: Option<Table>,
 }
 
-pub fn migrate_wisteria2_project_file(
-    project_file: &Path,
-) -> Result<Wisteria2Migration, (String, u8)> {
+pub fn migrate_wisteria2_project_file(project_file: &Path) -> Result<Wisteria2Migration, String> {
     let project_toml_string = fs::read_to_string(project_file).map_err(|e| {
-        (
-            format!(
-                "Failed to read Wisteria 2 project file {}: {e}",
-                project_file.to_string_lossy()
-            ),
-            1,
+        format!(
+            "Failed to read Wisteria 2 project file {}: {e}",
+            project_file.to_string_lossy()
         )
     })?;
 
@@ -57,22 +52,16 @@ pub fn migrate_wisteria2_project_file(
     let backup_path = next_backup_path(project_file);
 
     fs::copy(project_file, &backup_path).map_err(|e| {
-        (
-            format!(
-                "Failed to create backup {}: {e}",
-                backup_path.to_string_lossy()
-            ),
-            1,
+        format!(
+            "Failed to create backup {}: {e}",
+            backup_path.to_string_lossy()
         )
     })?;
 
     fs::write(project_file, conversion.project_toml).map_err(|e| {
-        (
-            format!(
-                "Failed to write converted project file {}: {e}",
-                project_file.to_string_lossy()
-            ),
-            1,
+        format!(
+            "Failed to write converted project file {}: {e}",
+            project_file.to_string_lossy()
         )
     })?;
 
@@ -87,15 +76,14 @@ pub fn migrate_wisteria2_project_file(
 pub fn convert_wisteria2_project_toml(
     project_toml_string: &str,
     project_root: &Path,
-) -> Result<Wisteria2Conversion, (String, u8)> {
+) -> Result<Wisteria2Conversion, String> {
     let legacy_project_toml = project_toml_string
         .parse::<Table>()
-        .map_err(|e| (format!("Could not parse Wisteria 2 project.toml: {e}"), 70))?;
+        .map_err(|e| format!("Could not parse Wisteria 2 project.toml: {e}"))?;
 
     let Some(project) = legacy_project_toml.get("project").and_then(Value::as_table) else {
-        return Err((
-            String::from("Cannot migrate Wisteria 2 project.toml without a [project] table"),
-            70,
+        return Err(String::from(
+            "Cannot migrate Wisteria 2 project.toml without a [project] table",
         ));
     };
 
@@ -151,7 +139,7 @@ pub fn convert_wisteria2_project_toml(
     };
 
     let project_toml =
-        toml::to_string_pretty(&migrated_project_toml).map_err(|e| (format!("{e}"), 70))?;
+        toml::to_string_pretty(&migrated_project_toml).map_err(|e| format!("{e}"))?;
 
     Ok(Wisteria2Conversion {
         project_toml,
@@ -227,7 +215,7 @@ fn convert_tasks(
     tasks: Option<&Value>,
     dependency_names: &[String],
     warnings: &mut Vec<String>,
-) -> Result<Table, (String, u8)> {
+) -> Result<Table, String> {
     let Some(tasks) = tasks else {
         warnings.push(String::from(
             "No [task] table was found; no configurations were generated.",
@@ -236,12 +224,9 @@ fn convert_tasks(
     };
 
     let Some(tasks) = tasks.as_table() else {
-        return Err((
-            format!(
-                "Cannot migrate Wisteria 2 task definitions; expected [task] to be a table, found {}",
-                tasks.type_str()
-            ),
-            70,
+        return Err(format!(
+            "Cannot migrate Wisteria 2 task definitions; expected [task] to be a table, found {}",
+            tasks.type_str()
         ));
     };
 
@@ -714,24 +699,30 @@ mod tests {
         );
 
         let dependencies = migrated.get("dependencies").unwrap().as_table().unwrap();
-        assert!(dependencies
-            .get("folder")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("lib"));
-        assert!(dependencies
-            .get("folder")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("external"));
-        assert!(dependencies
-            .get("archive")
-            .unwrap()
-            .as_table()
-            .unwrap()
-            .contains_key("example"));
+        assert!(
+            dependencies
+                .get("folder")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("lib")
+        );
+        assert!(
+            dependencies
+                .get("folder")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("external")
+        );
+        assert!(
+            dependencies
+                .get("archive")
+                .unwrap()
+                .as_table()
+                .unwrap()
+                .contains_key("example")
+        );
 
         let main = migrated
             .get("configuration")
@@ -782,10 +773,12 @@ mod tests {
                 .and_then(Value::as_bool),
             Some(true)
         );
-        assert!(conversion
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("-unsupported")));
+        assert!(
+            conversion
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("-unsupported"))
+        );
     }
 
     #[test]
@@ -818,8 +811,10 @@ mod tests {
             fs::read_to_string(temp.path().join("project.toml.wisteria2.bak")).unwrap(),
             "existing"
         );
-        assert!(fs::read_to_string(&project_file)
-            .unwrap()
-            .contains("[configuration.main]"));
+        assert!(
+            fs::read_to_string(&project_file)
+                .unwrap()
+                .contains("[configuration.main]")
+        );
     }
 }

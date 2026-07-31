@@ -12,7 +12,7 @@ impl Dependency {
         environment: &HashMap<String, String>,
         regexes: &HashMap<&str, Regex>,
         update: UpdateContext,
-    ) -> Result<Vec<PathBuf>, (String, u8)> {
+    ) -> Result<Vec<PathBuf>, String> {
         match self {
             Dependency::LocalFile { path, .. } => {
                 sources::local::resolve_file(path, environment, regexes)

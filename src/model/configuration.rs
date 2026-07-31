@@ -23,7 +23,7 @@ pub struct JavadocConfiguration {
 }
 
 impl JavadocConfiguration {
-    fn from(configuration_name: &str, toml: &Table) -> Result<Self, (String, u8)> {
+    fn from(configuration_name: &str, toml: &Table) -> Result<Self, String> {
         Ok(Self {
             output_dir: read_optional_javadoc_string(configuration_name, toml, "output-dir")?,
             target: read_optional_javadoc_string(configuration_name, toml, "target")?,
@@ -73,31 +73,31 @@ impl Configuration {
         toml: &Table,
         project_name: String,
         version: String,
-    ) -> Result<Self, (String, u8)> {
-        let sources = toml_utils::read_string_array("sources", toml).ok();
-        let dependencies = toml_utils::read_string_array("dependencies", toml).ok();
-        let shaded = toml_utils::read_string_array("shaded", toml).ok();
-        let includes = toml_utils::read_string_array("includes", toml).ok();
-        let targets = toml_utils::read_string_array("targets", toml).ok();
+    ) -> Result<Self, String> {
+        let sources = read_optional_string_array_for_configuration(&name, "sources", toml)?;
+        let dependencies =
+            read_optional_string_array_for_configuration(&name, "dependencies", toml)?;
+        let shaded = read_optional_string_array_for_configuration(&name, "shaded", toml)?;
+        let includes = read_optional_string_array_for_configuration(&name, "includes", toml)?;
+        let targets = read_optional_string_array_for_configuration(&name, "targets", toml)?;
         let javadoc = match toml.get("javadoc") {
             Some(v) if v.is_table() => {
                 Some(JavadocConfiguration::from(&name, v.as_table().unwrap())?)
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for \"{name}.javadoc\", expected a table, found {}",
-                        v.type_str()
-                    ),
-                    16,
-                ))
+                return Err(format!(
+                    "Invalid [configuration.{name}].javadoc: expected a table, found {}.\nFix: define javadoc settings under `[configuration.{name}.javadoc]`, or remove `javadoc`.",
+                    v.type_str()
+                ));
             }
             None => None,
         };
 
-        let entry = toml_utils::read_string("entry", toml).ok();
-        let java_version = toml_utils::read_integer("java_version", toml).unwrap_or(8);
-        let inherit: Option<String> = toml_utils::read_string("inherit", toml).ok();
+        let entry = read_optional_string_for_configuration(&name, "entry", toml)?;
+        let java_version =
+            read_optional_integer_for_configuration(&name, "java_version", toml)?.unwrap_or(8);
+        let inherit: Option<String> =
+            read_optional_string_for_configuration(&name, "inherit", toml)?;
 
         let mut tasks: HashMap<String, Rc<dyn TaskRunner>> = HashMap::new();
 
@@ -112,26 +112,20 @@ impl Configuration {
                             Rc::new(DefinedTask::new(key, t.as_table().unwrap())?),
                         ),
                         Some(t) => {
-                            return Err((
-                                format!(
-                                "Mismatched type for task \"{key}\", expected a table, found {}",
+                            return Err(format!(
+                                "Invalid task [configuration.{name}.task.{key}]: expected a table, found {}.\nFix: define custom task phases under `[configuration.{name}.task.{key}]`, or remove this task entry.",
                                 t.type_str()
-                            ),
-                                16,
-                            ))
+                            ));
                         }
                         None => panic!(),
                     };
                 }
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for \"task\", expected a table, found {}",
-                        v.type_str()
-                    ),
-                    16,
-                ))
+                return Err(format!(
+                    "Invalid [configuration.{name}].task: expected a table, found {}.\nFix: custom tasks must be defined under `[configuration.{name}.task.<task-name>]` tables, or remove `task`.",
+                    v.type_str()
+                ));
             }
             None => {}
         }
@@ -146,21 +140,22 @@ impl Configuration {
                 let t = t.as_table().unwrap();
 
                 for (key, value) in t {
-                    match value.as_str()
-                    {
+                    match value.as_str() {
                         Some(s) => environment.insert(key.clone(), s.to_string()),
-                        None => return Err((format!("Mismatched type for environment variable \"{key}\", expected a string, found {}", value.type_str()), 15))
+                        None => {
+                            return Err(format!(
+                                "Invalid [configuration.{name}.environment].{key}: expected a string, found {}.\nFix: environment values must be quoted strings, for example `{key} = \"value\"`.",
+                                value.type_str()
+                            ));
+                        }
                     };
                 }
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for \"environment\", expected a table, found {}",
-                        v.type_str()
-                    ),
-                    15,
-                ))
+                return Err(format!(
+                    "Invalid [configuration.{name}].environment: expected a table, found {}.\nFix: define environment variables under `[configuration.{name}.environment]`, for example `channel = \"stable\"`, or remove `environment`.",
+                    v.type_str()
+                ));
             }
             None => {}
         }
@@ -177,13 +172,10 @@ impl Configuration {
                 Some(flags)
             }
             Some(v) => {
-                return Err((
-                    format!(
-                        "Mismatched type for \"{name}.compiler_flags\", expected a table, found {}",
-                        v.type_str()
-                    ),
-                    16,
-                ))
+                return Err(format!(
+                    "Invalid [configuration.{name}].compiler_flags: expected a table, found {}.\nFix: define compiler flags under `[configuration.{name}.compiler_flags]`, for example `release_target = 17`, or remove `compiler_flags`.",
+                    v.type_str()
+                ));
             }
             None => None,
         };
@@ -267,19 +259,16 @@ impl Configuration {
 
     pub fn apply_implicit(&mut self, flags: StartupFlags) {
         if self.sources.is_some() {
-            // Javadocs
             self.tasks.insert(
                 String::from("javadocs"),
                 Rc::new(ImplicitJavadocTask::new()),
             );
 
-            // Build
             if self.targets().is_some() {
                 self.tasks
                     .insert(String::from("build"), Rc::new(ImplicitBuildTask::new()));
             }
 
-            // Run
             if self.entry.is_some() {
                 self.tasks
                     .insert(String::from("run"), Rc::new(ImplicitRunTask::new(flags)));
@@ -410,19 +399,50 @@ impl Configuration {
     }
 }
 
+fn read_optional_string_for_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<Option<String>, String> {
+    toml_utils::read_optional_string(key, toml)
+        .map_err(|error| contextual_configuration_error(configuration_name, key, error))
+}
+
+fn read_optional_integer_for_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<Option<u8>, String> {
+    toml_utils::read_optional_integer(key, toml)
+        .map_err(|error| contextual_configuration_error(configuration_name, key, error))
+}
+
+fn read_optional_string_array_for_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<Option<Vec<String>>, String> {
+    toml_utils::read_optional_string_array(key, toml)
+        .map_err(|error| contextual_configuration_error(configuration_name, key, error))
+}
+
+fn contextual_configuration_error(configuration_name: &str, key: &str, error: String) -> String {
+    format!(
+        "Invalid [configuration.{configuration_name}].{key}: {}",
+        error
+    )
+}
+
 fn read_optional_javadoc_string(
     configuration_name: &str,
     toml: &Table,
     key: &str,
-) -> Result<Option<String>, (String, u8)> {
+) -> Result<Option<String>, String> {
     match toml.get(key) {
         Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(value) => Err((
-            format!(
-                "Mismatched type for \"{configuration_name}.javadoc.{key}\", expected a string, found {}",
-                value.type_str()
-            ),
-            11,
+        Some(value) => Err(format!(
+            "Invalid [configuration.{configuration_name}.javadoc].{key}: expected a string, found {}.\nFix: write javadoc `{key}` as a quoted path, or remove the key.",
+            value.type_str()
         )),
         None => Ok(None),
     }
@@ -552,16 +572,20 @@ mod tests {
                 .map(String::as_str),
             Some("stable")
         );
-        assert!(configuration
-            .compiler_flags()
-            .unwrap()
-            .contains(&CompilerFlags::StoreParameterNames { setting: true }));
-        assert!(configuration
-            .compiler_flags()
-            .unwrap()
-            .contains(&CompilerFlags::Encoding {
-                encoding: String::from("UTF-8")
-            }));
+        assert!(
+            configuration
+                .compiler_flags()
+                .unwrap()
+                .contains(&CompilerFlags::StoreParameterNames { setting: true })
+        );
+        assert!(
+            configuration
+                .compiler_flags()
+                .unwrap()
+                .contains(&CompilerFlags::Encoding {
+                    encoding: String::from("UTF-8")
+                })
+        );
     }
 
     #[test]
@@ -718,7 +742,39 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Mismatched type for environment variable"));
-        assert_eq!(error.1, 15);
+        assert!(error.contains("Invalid [configuration.main.environment].port"));
+        assert!(error.contains("environment values must be quoted strings"));
+    }
+
+    #[test]
+    fn rejects_malformed_optional_configuration_fields() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table("sources = 12"),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected malformed sources to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].sources"));
+        assert!(error.contains("sources = [ \"src/\" ]"));
+    }
+
+    #[test]
+    fn rejects_out_of_range_java_version() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table("java_version = 300"),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected out-of-range java_version to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].java_version"));
+        assert!(error.contains("expected a number from 0 to 255"));
     }
 }

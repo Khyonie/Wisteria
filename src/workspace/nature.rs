@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    fs::{create_dir_all, remove_dir_all, remove_file, write}, io::ErrorKind,
+    fs::{create_dir_all, remove_dir_all, remove_file, write},
+    io::ErrorKind,
 };
 
 use regex::Regex;
@@ -11,6 +12,14 @@ use crate::{
     model::{Configuration, Project},
     util::consts,
 };
+
+fn ignore_not_found(result: std::io::Result<()>) -> Result<(), String> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("{e}")),
+    }
+}
 
 #[derive(Clone)]
 pub enum Nature {
@@ -27,35 +36,44 @@ impl Nature {
     ) -> Result<(), String> {
         match self {
             Nature::Eclipse => {
-                create_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(| e | format!("{e}"))?;
+                create_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(|e| format!("{e}"))?;
                 write(
                     consts::ECLIPSE_JDT_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_eclipse_config(configuration)),
-                ).map_err(| e | format!("{e}"))?;
+                )
+                .map_err(|e| format!("{e}"))?;
                 write(
                     consts::ECLIPSE_M2E_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
-                ).map_err(| e | format!("{e}"))?;
+                )
+                .map_err(|e| format!("{e}"))?;
 
-                write(consts::ECLIPSE_PROJECT_FILE, eclipse::generate_project(project)?).map_err(| e | format!("{e}"))?;
+                write(
+                    consts::ECLIPSE_PROJECT_FILE,
+                    eclipse::generate_project(project)?,
+                )
+                .map_err(|e| format!("{e}"))?;
 
                 write(
                     consts::ECLIPSE_CLASSPATH_FILE,
                     eclipse::generate_classpath(project, configuration, regexes)?,
-                ).map_err(| e | format!("{e}"))?;
+                )
+                .map_err(|e| format!("{e}"))?;
 
                 Ok(())
             }
             Nature::Maven => {
-                create_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(| e | format!("{e}"))?;
+                create_dir_all(consts::ECLIPSE_SETTINGS_DIR).map_err(|e| format!("{e}"))?;
                 write(
                     consts::ECLIPSE_M2E_PREFS_FILE,
                     eq_sep_config::generate_config(eclipse::generate_maven_config()),
-                ).map_err(| e | format!("{e}"))?;
+                )
+                .map_err(|e| format!("{e}"))?;
                 write(
                     consts::MAVEN_POM_FILE,
                     maven::generate_pom(project, configuration)?,
-                ).map_err(| e | format!("{e}"))?;
+                )
+                .map_err(|e| format!("{e}"))?;
 
                 Ok(())
             }
@@ -65,34 +83,13 @@ impl Nature {
     pub fn remove_nature(&self) -> Result<(), String> {
         match self {
             Self::Eclipse => {
-                 if let Err(e) = remove_dir_all(consts::ECLIPSE_SETTINGS_DIR) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"))
-                    }
-                }
-                if let Err(e) = remove_file(consts::ECLIPSE_CLASSPATH_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"))
-                    }
-                }
-
-                if let Err(e) = remove_file(consts::ECLIPSE_PROJECT_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"))
-                    }
-                }
+                ignore_not_found(remove_dir_all(consts::ECLIPSE_SETTINGS_DIR))?;
+                ignore_not_found(remove_file(consts::ECLIPSE_CLASSPATH_FILE))?;
+                ignore_not_found(remove_file(consts::ECLIPSE_PROJECT_FILE))?;
             }
             Self::Maven => {
-                if let Err(e) = remove_file(consts::MAVEN_POM_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"))
-                    }
-                }
-                if let Err(e) = remove_file(consts::ECLIPSE_M2E_PREFS_FILE) {
-                    if e.kind() != ErrorKind::NotFound {
-                        return Err(format!("{e}"))
-                    }
-                }
+                ignore_not_found(remove_file(consts::MAVEN_POM_FILE))?;
+                ignore_not_found(remove_file(consts::ECLIPSE_M2E_PREFS_FILE))?;
             }
         }
 
@@ -114,7 +111,7 @@ impl Nature {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
 
     fn regexes() -> HashMap<&'static str, Regex> {
@@ -152,7 +149,12 @@ mod tests {
         });
 
         assert!(!temp.path().join("pom.xml").exists());
-        assert!(!temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+        assert!(
+            !temp
+                .path()
+                .join(".settings/org.eclipse.m2e.core.prefs")
+                .exists()
+        );
     }
 
     #[test]
@@ -183,8 +185,16 @@ mod tests {
 
         assert!(temp.path().join(".project").exists());
         assert!(temp.path().join(".classpath").exists());
-        assert!(temp.path().join(".settings/org.eclipse.jdt.core.prefs").exists());
-        assert!(temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+        assert!(
+            temp.path()
+                .join(".settings/org.eclipse.jdt.core.prefs")
+                .exists()
+        );
+        assert!(
+            temp.path()
+                .join(".settings/org.eclipse.m2e.core.prefs")
+                .exists()
+        );
     }
 
     #[test]
@@ -212,6 +222,10 @@ mod tests {
         });
 
         assert!(temp.path().join("pom.xml").exists());
-        assert!(temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+        assert!(
+            temp.path()
+                .join(".settings/org.eclipse.m2e.core.prefs")
+                .exists()
+        );
     }
 }

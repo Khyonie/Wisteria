@@ -5,7 +5,7 @@ use sha256::digest;
 
 use crate::java::manifest::{Manifest, ManifestEntry};
 use crate::model::Configuration;
-use crate::util::consts;
+use crate::util::{consts, exit_code};
 use crate::workspace::paths::resolve_filepath;
 
 pub fn package_jar(
@@ -14,7 +14,7 @@ pub fn package_jar(
     shaded_jars: &[PathBuf],
     targets: Option<&Vec<String>>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<Vec<String>, (String, u8)> {
+) -> Result<Vec<String>, String> {
     let mut manifest: Manifest = Manifest::new();
     manifest.add_entry(ManifestEntry::CreatedBy {
         signature: String::from("Wisteria 3"),
@@ -37,10 +37,13 @@ pub fn package_jar(
 
     let manifest_path = PathBuf::from(consts::MANIFEST_DIR);
     if manifest_path.exists() {
-        fs::remove_dir_all(consts::MANIFEST_DIR).unwrap();
+        fs::remove_dir_all(consts::MANIFEST_DIR)
+            .map_err(|e| format!("Failed to remove manifest path: {e}"))?;
     }
-    fs::create_dir_all(manifest_path).unwrap();
-    fs::write(consts::MANIFEST_FILE, manifest.to_file()).unwrap();
+    fs::create_dir_all(manifest_path)
+        .map_err(|e| format!("Failed to create manifest path: {e}"))?;
+    fs::write(consts::MANIFEST_FILE, manifest.to_file())
+        .map_err(|e| format!("Failed to write manifest file: {e}"))?;
 
     let mut jar_command = Command::new("jar");
     jar_command.args(["-cMf", consts::TARGET_JAR_PATH]);
@@ -54,8 +57,8 @@ pub fn package_jar(
 
     match jar_command.output() {
         Ok(output) => {
-            let stdout = String::from_utf8(output.stdout).unwrap();
-            let stderr = String::from_utf8(output.stderr).unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
             if !stdout.is_empty() {
                 println!("{stdout}")
             }
@@ -64,14 +67,11 @@ pub fn package_jar(
             }
 
             if !output.status.success() {
-                let code = output.status.code().unwrap_or(1);
-                return Err((
-                    format!("jar package failed with status {}", output.status),
-                    u8::try_from(code).unwrap_or(1),
-                ));
+                exit_code::record_external_process_exit_code(output.status);
+                return Err(format!("jar package failed with status {}", output.status));
             }
         }
-        Err(e) => return Err((format!("Failed to package: {e}"), 1)),
+        Err(e) => return Err(format!("Failed to package: {e}")),
     }
 
     if !shaded_jars.is_empty() {
@@ -86,8 +86,8 @@ pub fn package_jar(
 
         match jar_update_command.output() {
             Ok(output) => {
-                let stdout = String::from_utf8(output.stdout).unwrap();
-                let stderr = String::from_utf8(output.stderr).unwrap();
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 if !stdout.is_empty() {
                     println!("{stdout}")
                 }
@@ -96,20 +96,21 @@ pub fn package_jar(
                 }
 
                 if !output.status.success() {
-                    let code = output.status.code().unwrap_or(1);
-                    return Err((
-                        format!("jar shade update failed with status {}", output.status),
-                        u8::try_from(code).unwrap_or(1),
+                    exit_code::record_external_process_exit_code(output.status);
+                    return Err(format!(
+                        "jar shade update failed with status {}",
+                        output.status
                     ));
                 }
             }
-            Err(e) => return Err((format!("Failed to update package with shaded jars: {e}"), 1)),
+            Err(e) => return Err(format!("Failed to update package with shaded jars: {e}")),
         }
     }
 
     let mut outputs = Vec::new();
-    let bytes: Vec<u8> = fs::read(consts::TARGET_JAR_PATH).unwrap();
-    let hash = digest(bytes);
+    let bytes: Vec<u8> = fs::read(consts::TARGET_JAR_PATH)
+        .map_err(|e| format!("Failed to read packaged jar for hashing: {e}"))?;
+    let hash = digest(&bytes);
     println!("Packaged, hash: #{hash}");
 
     if let Some(targets) = targets {
@@ -117,22 +118,20 @@ pub fn package_jar(
             let target = resolve_filepath(target, configuration.environment(), regexes)?;
             let target_path: PathBuf = PathBuf::from(&target);
 
-            if !target_path.exists() {
-                let parent = target_path.parent().unwrap();
-
+            if !target_path.exists()
+                && let Some(parent) = target_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
                 fs::create_dir_all(parent).map_err(|e| {
-                    (
-                        format!(
-                            "Could not create parent folder {}: {e}",
-                            parent.to_string_lossy()
-                        ),
-                        1,
+                    format!(
+                        "Could not create parent folder {}: {e}",
+                        parent.to_string_lossy()
                     )
                 })?;
             }
 
-            fs::write(&target, fs::read(consts::TARGET_JAR_PATH).unwrap())
-                .map_err(|e| (format!("Failed to write to target {target}: {e}"), 1))?;
+            fs::write(&target, &bytes)
+                .map_err(|e| format!("Failed to write to target {target}: {e}"))?;
             println!("Successfully written target {target}");
             outputs.push(target_path.to_string_lossy().to_string())
         }

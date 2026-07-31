@@ -15,7 +15,7 @@ pub fn resolve(
     release_type: &GithubReleaseType,
     update_policy: &UpdatePolicy,
     update: &UpdateContext,
-) -> Result<Vec<PathBuf>, (String, u8)> {
+) -> Result<Vec<PathBuf>, String> {
     let resolved_tag = match tag {
         Some(tag) => tag.clone(),
         None => resolve_latest_tag(username, repository, release_type)?,
@@ -25,7 +25,7 @@ pub fn resolve(
     let path = PathBuf::from(&filepath);
 
     if update_policy.should_update(update) {
-        paths::ensure_parents(&filepath).map_err(|e| (e, 1))?;
+        paths::ensure_parents(&filepath)?;
 
         if path.exists() {
             println!("Nothing to do");
@@ -56,47 +56,34 @@ fn resolve_latest_tag(
     username: &str,
     repository: &str,
     release_type: &GithubReleaseType,
-) -> Result<String, (String, u8)> {
+) -> Result<String, String> {
     let url = format!("https://api.github.com/repos/{username}/{repository}/releases?per_page=100");
     let client = Client::builder()
         .user_agent(download::USER_AGENT)
         .build()
-        .map_err(|e| (format!("Could not create GitHub API client: {e}"), 1))?;
+        .map_err(|e| format!("Could not create GitHub API client: {e}"))?;
 
     let response = client
         .get(&url)
         .send()
-        .map_err(|e| (format!("Could not reach GitHub API at URL {url}: {e}"), 1))?;
+        .map_err(|e| format!("Could not reach GitHub API at URL {url}: {e}"))?;
 
     if !response.status().is_success() {
-        return Err((
-            format!(
-                "GitHub API responded with status {} for {username}/{repository}",
-                response.status().as_str()
-            ),
-            1,
+        return Err(format!(
+            "GitHub API responded with status {} for {username}/{repository}",
+            response.status().as_str()
         ));
     }
 
     let text = response.text().map_err(|e| {
-        (
-            format!("Failed to read GitHub API response for {username}/{repository}: {e}"),
-            1,
-        )
+        format!("Failed to read GitHub API response for {username}/{repository}: {e}")
     })?;
     let releases: Vec<GithubRelease> = serde_json::from_str(&text).map_err(|e| {
-        (
-            format!("Could not decode GitHub releases for {username}/{repository}: {e}"),
-            1,
-        )
+        format!("Could not decode GitHub releases for {username}/{repository}: {e}")
     })?;
 
-    select_latest_tag(&releases, release_type).ok_or_else(|| {
-        (
-            missing_release_message(username, repository, release_type),
-            1,
-        )
-    })
+    select_latest_tag(&releases, release_type)
+        .ok_or_else(|| missing_release_message(username, repository, release_type))
 }
 
 fn select_latest_tag(

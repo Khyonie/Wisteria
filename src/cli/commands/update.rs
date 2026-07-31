@@ -1,36 +1,25 @@
 use std::process::exit;
 
 use crate::cli::args::StartupFlags;
-use crate::cli::commands::{envvar_regexes, update_dependencies_with_context};
+use crate::cli::commands::{
+    configuration_or_exit, envvar_regexes, project_or_exit, update_dependencies_with_context,
+};
 use crate::dependency::UpdateContext;
 use crate::model::{Metadata, Project};
 use crate::workspace::refresh::refresh;
 
-pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], flags: &StartupFlags) {
-    let project: Project = match project {
-        Ok(p) => p,
-        Err(e) => {
-            println!(
-                "Could not read a Wisteria project.toml file in this directory. ({})",
-                e.0
-            );
-            exit(e.1.into())
-        }
-    };
+pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
+    let project: Project = project_or_exit(project);
 
     let metadata = match Metadata::load() {
         Ok(m) => m,
-        Err((e, code)) => {
+        Err(e) => {
             println!("{e}");
-            exit(code as i32)
+            exit(1)
         }
     };
 
-    let configuration = project
-        .info()
-        .configurations()
-        .get(&metadata.configuration)
-        .unwrap();
+    let configuration = configuration_or_exit(&project, &metadata.configuration);
     let regexes = envvar_regexes();
     let mut refresh_failed = false;
 
@@ -45,12 +34,11 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
             UpdateContext::Update,
         );
 
-        if !flags.no_refresh {
-            if let Err((nature, error)) = refresh(&project, configuration, &regexes)
-            {
-                println!("Failed to refresh nature {}: {error}", nature.type_str());
-                refresh_failed = true
-            }
+        if !flags.no_refresh
+            && let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        {
+            println!("Failed to refresh nature {}: {error}", nature.type_str());
+            refresh_failed = true
         }
 
         if !failed.is_empty() {
@@ -62,8 +50,7 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
             exit(1)
         }
 
-        if refresh_failed
-        {
+        if refresh_failed {
             println!("Dependencies updated, however project might be in a degraded state.");
             exit(1)
         }
@@ -77,6 +64,22 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
     for a in args[2..].iter() {
         if !project.dependencies().contains_key(a) {
             println!("No such dependency \"{}\" has been defined.", a);
+            if project.dependencies().is_empty() {
+                println!(
+                    "Fix: add dependencies under a table such as `[dependencies.maven]`, or run `wisteria update all` only after dependencies are configured."
+                );
+            } else {
+                println!("Valid dependencies:");
+                let mut dependencies: Vec<&str> =
+                    project.dependencies().keys().map(String::as_str).collect();
+                dependencies.sort_unstable();
+                for dependency in dependencies {
+                    println!("- {dependency}");
+                }
+                println!(
+                    "Fix: use one of the dependency names above, or add `{a}` to project.toml."
+                );
+            }
             exit(1)
         }
 
@@ -91,12 +94,11 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
         UpdateContext::Update,
     );
 
-    if !flags.no_refresh {
-        if let Err((nature, error)) = refresh(&project, configuration, &regexes)
-        {
-            println!("Failed to refresh nature {}: {error}", nature.type_str());
-            refresh_failed = true
-        }
+    if !flags.no_refresh
+        && let Err((nature, error)) = refresh(&project, configuration, &regexes)
+    {
+        println!("Failed to refresh nature {}: {error}", nature.type_str());
+        refresh_failed = true
     }
 
     if !failed.is_empty() {
@@ -107,8 +109,7 @@ pub fn trigger_update(project: Result<Project, (String, u8)>, args: &[String], f
 
         exit(1)
     }
-    if refresh_failed
-    {
+    if refresh_failed {
         println!("Dependency updated, however project might be in a degraded state.");
         exit(1)
     }

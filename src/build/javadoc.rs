@@ -4,13 +4,13 @@ use regex::Regex;
 
 use crate::{
     build::{
-        resolve::{resolve_dependencies, ResolvedDependencies},
+        resolve::{ResolvedDependencies, resolve_dependencies},
         sources,
     },
     java::compiler_flags::CompilerFlags,
     model::{Configuration, Project, ProjectInfo},
     project::TaskRunner,
-    util::consts,
+    util::{consts, exit_code},
     workspace::paths::resolve_filepath,
 };
 
@@ -30,13 +30,19 @@ impl ImplicitJavadocTask {
     }
 }
 
+impl Default for ImplicitJavadocTask {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskRunner for ImplicitJavadocTask {
     fn invoke(
         &self,
         _info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
-    ) -> Result<(), (String, u8)> {
+    ) -> Result<(), String> {
         let mut regexes: HashMap<&str, Regex> = HashMap::new();
         regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
 
@@ -63,7 +69,7 @@ fn run_javadoc(
     dependencies: &ResolvedDependencies,
     copied_files: Vec<String>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<(), (String, u8)> {
+) -> Result<(), String> {
     let classpath = dependencies.classpath();
     let javadoc_links = dependency_javadoc_links(project, configuration);
     let output_dir = prepare_javadoc_output_dir(configuration, regexes)?;
@@ -93,14 +99,11 @@ fn run_javadoc(
             }
 
             if !out.status.success() {
-                let code = out.status.code().unwrap_or(1);
-                return Err((
-                    format!("javadoc failed with status {}", out.status),
-                    u8::try_from(code).unwrap_or(1),
-                ));
+                exit_code::record_external_process_exit_code(out.status);
+                return Err(format!("javadoc failed with status {}", out.status));
             }
         }
-        Err(e) => return Err((format!("Failed to run javadoc command: {e}"), 1)),
+        Err(e) => return Err(format!("Failed to run javadoc command: {e}")),
     }
 
     if let Some(target) = configuration.javadoc_target() {
@@ -116,12 +119,9 @@ fn build_javadoc_command_args(
     classpath: Option<&str>,
     javadoc_links: &[String],
     output_dir: &str,
-) -> Result<Vec<String>, (String, u8)> {
+) -> Result<Vec<String>, String> {
     if copied_files.is_empty() {
-        return Err((
-            String::from("No source files found, nothing to document"),
-            1,
-        ));
+        return Err(String::from("No source files found, nothing to document"));
     }
 
     let mut args = vec![
@@ -155,18 +155,14 @@ fn build_javadoc_command_args(
 fn prepare_javadoc_output_dir(
     configuration: &Configuration,
     regexes: &HashMap<&str, Regex>,
-) -> Result<String, (String, u8)> {
+) -> Result<String, String> {
     let output_dir = resolve_filepath(
         configuration.javadoc_output_dir(),
         configuration.environment(),
         regexes,
     )?;
-    fs::create_dir_all(&output_dir).map_err(|e| {
-        (
-            format!("Could not create javadoc output directory {output_dir}: {e}"),
-            1,
-        )
-    })?;
+    fs::create_dir_all(&output_dir)
+        .map_err(|e| format!("Could not create javadoc output directory {output_dir}: {e}"))?;
 
     Ok(output_dir)
 }
@@ -176,21 +172,18 @@ fn package_javadocs(
     output_dir: &str,
     target: &str,
     regexes: &HashMap<&str, Regex>,
-) -> Result<(), (String, u8)> {
+) -> Result<(), String> {
     let target = resolve_filepath(target, configuration.environment(), regexes)?;
     let target_path = std::path::PathBuf::from(&target);
-    if let Some(parent) = target_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| {
-                (
-                    format!(
-                        "Could not create parent folder {}: {e}",
-                        parent.to_string_lossy()
-                    ),
-                    1,
-                )
-            })?;
-        }
+    if let Some(parent) = target_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Could not create parent folder {}: {e}",
+                parent.to_string_lossy()
+            )
+        })?;
     }
 
     let mut jar_command = Command::new("jar");
@@ -207,14 +200,14 @@ fn package_javadocs(
             }
 
             if !out.status.success() {
-                let code = out.status.code().unwrap_or(1);
-                return Err((
-                    format!("javadoc jar packaging failed with status {}", out.status),
-                    u8::try_from(code).unwrap_or(1),
+                exit_code::record_external_process_exit_code(out.status);
+                return Err(format!(
+                    "javadoc jar packaging failed with status {}",
+                    out.status
                 ));
             }
         }
-        Err(e) => return Err((format!("Failed to package javadocs: {e}"), 1)),
+        Err(e) => return Err(format!("Failed to package javadocs: {e}")),
     }
 
     println!("Successfully written javadoc target {target}");
@@ -280,7 +273,7 @@ fn javadoc_flag(flag: &CompilerFlags) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
     use toml::Table;
 
@@ -328,24 +321,29 @@ mod tests {
             )
             .unwrap();
 
-            assert!(args
-                .windows(2)
-                .any(|window| window == ["-d", "target/javadoc/docs/"]));
-            assert!(args
-                .windows(2)
-                .any(|window| window == ["--source-path", consts::SOURCE_OUT_PATH]));
-            assert!(args
-                .windows(2)
-                .any(|window| window == ["--class-path", "lib/example.jar"]));
-            assert!(args
-                .windows(2)
-                .any(|window| window == ["-link", "https://example.com/docs/"]));
+            assert!(
+                args.windows(2)
+                    .any(|window| window == ["-d", "target/javadoc/docs/"])
+            );
+            assert!(
+                args.windows(2)
+                    .any(|window| window == ["--source-path", consts::SOURCE_OUT_PATH])
+            );
+            assert!(
+                args.windows(2)
+                    .any(|window| window == ["--class-path", "lib/example.jar"])
+            );
+            assert!(
+                args.windows(2)
+                    .any(|window| window == ["-link", "https://example.com/docs/"])
+            );
             assert!(args.windows(2).any(|window| window == ["--release", "17"]));
             assert!(args.contains(&String::from("--enable-preview")));
             assert!(args.contains(&String::from("-Xdoclint:missing,reference")));
-            assert!(args
-                .windows(2)
-                .any(|window| window == ["-encoding", "UTF-8"]));
+            assert!(
+                args.windows(2)
+                    .any(|window| window == ["-encoding", "UTF-8"])
+            );
             assert!(args.contains(&String::from(".wisteria/work/src/example/Main.java")));
             assert!(!args.contains(&String::from("-parameters")));
             assert!(!args.contains(&String::from("-Xlint:all")));
@@ -363,8 +361,7 @@ mod tests {
                 build_javadoc_command_args(&configuration, &[], None, &[], "target/javadoc/docs/")
                     .unwrap_err();
 
-            assert_eq!(error.0, "No source files found, nothing to document");
-            assert_eq!(error.1, 1);
+            assert_eq!(error, "No source files found, nothing to document");
         });
     }
 

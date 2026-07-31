@@ -25,13 +25,19 @@ impl ImplicitBuildTask {
     }
 }
 
+impl Default for ImplicitBuildTask {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskRunner for ImplicitBuildTask {
     fn invoke(
         &self,
         _info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
-    ) -> Result<(), (String, u8)> {
+    ) -> Result<(), String> {
         let mut regexes: HashMap<&str, Regex> = HashMap::new();
         regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
 
@@ -43,11 +49,11 @@ impl TaskRunner for ImplicitBuildTask {
             copied_files,
             dependencies.classpath().as_deref(),
         )?;
-        shade::shade_jars(&dependencies.shaded_jars())?;
+        shade::shade_jars(dependencies.shaded_jars())?;
         package::package_jar(
             configuration,
-            &dependencies.paths(),
-            &dependencies.shaded_jars(),
+            dependencies.paths(),
+            dependencies.shaded_jars(),
             configuration.targets(),
             &regexes,
         )?;

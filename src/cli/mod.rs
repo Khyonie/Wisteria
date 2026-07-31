@@ -16,7 +16,7 @@ pub fn run() {
         _ => {}
     }
 
-    let project: Result<Project, (String, u8)> =
+    let project: Result<Project, String> =
         Project::from_with_flags(flags.use_project.clone(), flags.clone());
 
     match command.as_str() {

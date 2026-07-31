@@ -1,10 +1,10 @@
 use std::{
     env, fs,
-    path::{Path, PathBuf},
     panic::{self, AssertUnwindSafe},
+    path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 

@@ -20,7 +20,7 @@ pub enum UpdateContext {
 }
 
 impl UpdatePolicy {
-    pub fn load(value: &str) -> Result<Self, (String, u8)> {
+    pub fn load(value: &str) -> Result<Self, String> {
         match value {
             "Always" => Ok(UpdatePolicy::Always),
             "SwitchOrUpdate" => Ok(UpdatePolicy::SwitchOrUpdate),
@@ -30,7 +30,9 @@ impl UpdatePolicy {
             "TaskOrUpdate" => Ok(UpdatePolicy::TaskOrUpdate),
             "TaskInvokedOnly" => Ok(UpdatePolicy::TaskInvokedOnly),
             "Never" => Ok(UpdatePolicy::Never),
-            _ => Err((String::from("Unexpected update policy, expected one of [Always, SwitchOrUpdate, UpdateOnly, SwitchOrTask, SwitchConfigurationOnly, TaskOrUpdate, TaskInvokedOnly, Never]"), 30)),
+            _ => Err(String::from(
+                "Unexpected update policy, expected one of [Always, SwitchOrUpdate, UpdateOnly, SwitchOrTask, SwitchConfigurationOnly, TaskOrUpdate, TaskInvokedOnly, Never]",
+            )),
         }
     }
 
@@ -84,7 +86,10 @@ mod tests {
 
     #[test]
     fn loads_all_known_update_policies() {
-        assert!(matches!(UpdatePolicy::load("Always").unwrap(), UpdatePolicy::Always));
+        assert!(matches!(
+            UpdatePolicy::load("Always").unwrap(),
+            UpdatePolicy::Always
+        ));
         assert!(matches!(
             UpdatePolicy::load("SwitchOrUpdate").unwrap(),
             UpdatePolicy::SwitchOrUpdate
@@ -109,7 +114,10 @@ mod tests {
             UpdatePolicy::load("TaskInvokedOnly").unwrap(),
             UpdatePolicy::TaskInvokedOnly
         ));
-        assert!(matches!(UpdatePolicy::load("Never").unwrap(), UpdatePolicy::Never));
+        assert!(matches!(
+            UpdatePolicy::load("Never").unwrap(),
+            UpdatePolicy::Never
+        ));
     }
 
     #[test]
@@ -119,8 +127,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.0.contains("Unexpected update policy"));
-        assert_eq!(error.1, 30);
+        assert!(error.contains("Unexpected update policy"));
     }
 
     #[test]
@@ -137,7 +144,10 @@ mod tests {
             (UpdatePolicy::SwitchOrUpdate, [true, true, false, false]),
             (UpdatePolicy::UpdateOnly, [true, false, false, false]),
             (UpdatePolicy::SwitchOrTask, [false, true, true, false]),
-            (UpdatePolicy::SwitchConfigurationOnly, [false, true, false, false]),
+            (
+                UpdatePolicy::SwitchConfigurationOnly,
+                [false, true, false, false],
+            ),
             (UpdatePolicy::TaskOrUpdate, [true, false, true, false]),
             (UpdatePolicy::TaskInvokedOnly, [false, false, true, false]),
             (UpdatePolicy::Never, [false, false, false, false]),

@@ -9,7 +9,7 @@ pub trait TaskRunner {
         info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
-    ) -> Result<(), (String, u8)>;
+    ) -> Result<(), String>;
 
     fn phase_order(&self) -> &[String];
 }

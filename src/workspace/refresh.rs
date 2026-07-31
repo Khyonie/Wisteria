@@ -2,15 +2,21 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
-use crate::{model::{Configuration, Project}, util::consts::print_action_header, workspace::nature::Nature};
+use crate::{
+    model::{Configuration, Project},
+    util::consts::print_action_header,
+    workspace::nature::Nature,
+};
 
-pub(crate) fn refresh(project: &Project, configuration: &Configuration, regexes: &HashMap<&str, Regex>) -> Result<(), (Nature, String)>
-{
+pub(crate) fn refresh(
+    project: &Project,
+    configuration: &Configuration,
+    regexes: &HashMap<&str, Regex>,
+) -> Result<(), (Nature, String)> {
     print_action_header("Removing natures", 1, 2);
     for nature in Nature::values() {
         print!("> Removing project nature \"{}\" ... ", nature.type_str());
-        nature.remove_nature()
-            .map_err(| e | (nature, e))?;
+        nature.remove_nature().map_err(|e| (nature, e))?;
 
         println!("Done!");
     }
@@ -19,18 +25,20 @@ pub(crate) fn refresh(project: &Project, configuration: &Configuration, regexes:
     print_action_header("Applying natures", 2, 2);
     for nature in project.info().natures() {
         print!("> Applying project nature \"{}\"... ", nature.type_str());
-        if let Err(e) = nature.setup_nature(&project, configuration, &regexes)
-        {
+        if let Err(e) = nature.setup_nature(project, configuration, regexes) {
             println!("Failed: {e}");
-            print!("Deleting project nature \"{}\" for project cleanliness ... ", nature.type_str());
-            
+            print!(
+                "Deleting project nature \"{}\" for project cleanliness ... ",
+                nature.type_str()
+            );
+
             match nature.remove_nature() {
                 Ok(_) => println!("Done."),
                 Err(e) => {
                     println!("Failed: {e}, you may have to clean the project manually.")
-                },
+                }
             }
-            return Err((nature.clone(), e))
+            return Err((nature.clone(), e));
         }
         println!("Done!");
     }
@@ -41,7 +49,7 @@ pub(crate) fn refresh(project: &Project, configuration: &Configuration, regexes:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{with_current_dir, TempDir};
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
 
     fn regexes() -> HashMap<&'static str, Regex> {
@@ -80,13 +88,20 @@ mod tests {
 
         with_current_dir(temp.path(), || {
             if let Err((nature, error)) = refresh(&project, configuration, &regexes()) {
-                panic!("expected refresh to succeed for {}: {error}", nature.type_str());
+                panic!(
+                    "expected refresh to succeed for {}: {error}",
+                    nature.type_str()
+                );
             }
         });
 
         assert!(!temp.path().join(".project").exists());
         assert!(!temp.path().join(".classpath").exists());
         assert!(temp.path().join("pom.xml").exists());
-        assert!(temp.path().join(".settings/org.eclipse.m2e.core.prefs").exists());
+        assert!(
+            temp.path()
+                .join(".settings/org.eclipse.m2e.core.prefs")
+                .exists()
+        );
     }
 }

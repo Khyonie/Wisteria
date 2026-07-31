@@ -2,7 +2,11 @@ use std::{collections::HashMap, path::PathBuf};
 
 use regex::Regex;
 
-use crate::{model::{Configuration, Project}, project::UpdateContext, util::consts};
+use crate::{
+    model::{Configuration, Project},
+    project::UpdateContext,
+    util::consts,
+};
 
 pub struct ResolvedDependencies {
     paths: Vec<PathBuf>,
@@ -10,20 +14,16 @@ pub struct ResolvedDependencies {
     classpath: Option<String>,
 }
 
-impl ResolvedDependencies
-{
-    pub fn paths(&self) -> &[PathBuf]
-    {
+impl ResolvedDependencies {
+    pub fn paths(&self) -> &[PathBuf] {
         &self.paths
     }
 
-    pub fn shaded_jars(&self) -> &[PathBuf]
-    {
+    pub fn shaded_jars(&self) -> &[PathBuf] {
         &self.shaded_jars
     }
 
-    pub fn classpath(&self) -> Option<String>
-    {
+    pub fn classpath(&self) -> Option<String> {
         self.classpath.clone()
     }
 }
@@ -32,7 +32,7 @@ pub(crate) fn resolve_dependencies(
     project: &Project,
     configuration: &Configuration,
     regexes: &HashMap<&str, Regex>,
-) -> Result<ResolvedDependencies, (String, u8)> {
+) -> Result<ResolvedDependencies, String> {
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut shaded_jars: Vec<PathBuf> = Vec::new();
     let mut classpath: Option<String> = None;
@@ -62,8 +62,8 @@ pub(crate) fn resolve_dependencies(
                 ) {
                     Ok(p) => p,
                     Err(e) => {
-                        println!("Could not download {name}: {}", e.0);
-                        failed_downloads.push((name.clone(), e.0));
+                        println!("Could not download {name}: {e}");
+                        failed_downloads.push((name.clone(), e));
                         continue;
                     }
                 };
@@ -88,7 +88,7 @@ pub(crate) fn resolve_dependencies(
                 println!("- {name}: {error}");
             }
 
-            return Err((String::from("Could not resolve all dependencies"), 1));
+            return Err(String::from("Could not resolve all dependencies"));
         }
 
         println!("Successfully resolved all dependencies!");
