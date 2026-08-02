@@ -1,5 +1,6 @@
 # Wisteria
-Wisteria is a Java project manager and builder for Linux CLI-only environments, such as SSH sessions. Inspired by Rust-lang's Cargo project manager.
+Wisteria is a Java project manager and builder for Linux CLI-only environments, such as SSH 
+sessions. Inspired by Rust-lang's Cargo project manager.
 
 For example:
 ```toml
@@ -33,23 +34,29 @@ target = "targets/{configuration}/{project_name}-{configuration}-{version}-javad
 ### Create a new project
 `-$ wisteria create <your project name>` 
 
-Creates a folder in the current directory to contain the new project, with a source folder and a `project.toml` file.
+Creates a folder in the current directory to contain the new project, with a source folder and a 
+`project.toml` file.
 
 Optionally, add the `--minimal` flag to create the project using a minimal `project.toml`.
 
 ### Build the current project configuration
 `-$ wisteria build`
 
-Compiles all .java source files inside the source folder(s) defined in the current project configuration, and packages them as a .jar file defined by the `targets` section of the current project configuration.
+Compiles all .java source files inside the source folder(s) defined in the current project 
+configuration, and packages them as a .jar file defined by the `targets` section of the current 
+project configuration.
 
-For a configuration to be valid for building, it must define `sources` and `targets`. Additionally if `entry` is specified, the resulting .jar file will be executable.
+For a configuration to be valid for building, it must define `sources` and `targets`. Additionally 
+if `entry` is specified, the resulting .jar file will be executable.
 
 ### Build and run the current project configuration
 `-$ wisteria run`
 
-Like build, this compiles all .java source files defined in the current project configuration. The program is then executed.
+Like build, this compiles all .java source files defined in the current project configuration. The 
+program is then executed.
 
-- To pass command-line JVM arguments to the program, write `--` as an argument. Any arguments written after will be passed to the program as-is.
+- To pass command-line JVM arguments to the program, write `--` as an argument. Any arguments 
+written after will be passed to the program as-is.
 
 Example: `-$ wisteria run -- -Xms4g -Xmx8g`
 
@@ -58,19 +65,25 @@ For a configuration to be valid for running, it must define `sources` and `entry
 ### Generate Javadocs for the current project configuration
 `-$ wisteria javadocs`
 
-Generates Javadocs for all .java source files inside the source folder(s) defined in the current project configuration. Javadocs are written to `javadoc.output-dir` when configured, or `target/javadoc/{configuration}/` by default.
+Generates Javadocs for all .java source files inside the source folder(s) defined in the current 
+project configuration. Javadocs are written to `javadoc.output-dir` when configured, or 
+`target/javadoc/{configuration}/` by default.
 
-If `javadoc.target` is configured, Wisteria packages the generated Javadoc files into a .jar at that target path.
+If `javadoc.target` is configured, Wisteria packages the generated Javadoc files into a .jar at 
+that target path.
 
 ### Switch the project configuration
 `-$ wisteria switch <configuration>`
 
-Switches the project configuration to a different configuration defined in `project.toml`, and refreshes the workspace. See below for more details.
+Switches the project configuration to a different configuration defined in `project.toml`, and 
+refreshes the workspace. See below for more details.
 
 ### Apply project settings to the workspace
 `-$ wisteria refresh`
 
-The current `project.toml` settings will apply to the project workspace by generating files based on the natures in `project.natures`. Useful to apply changes to the workspace without switching the current project configuration.
+The current `project.toml` settings will apply to the project workspace by generating files based 
+on the natures in `project.natures`. Useful to apply changes to the workspace without switching the
+current project configuration.
 - "eclipse" nature generates `.project` and `.classpath` files.
 - "maven" nature generates `pom.xml`.
 
@@ -79,32 +92,46 @@ Applicable dependencies may be updated with this action as well.
 ### Update dependencies
 `-$ wisteria update [dependency | all]`
 
-Downloads a specific Maven or Github dependency as defined under a `[dependencies.<source>]` table in `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, the version selected will be the latest stable release.
+Downloads a specific Maven or Github dependency as defined under a `[dependencies.<source>]` table 
+in `project.toml` and reconfigures the classpath to use the new file. Unless otherwise defined, 
+the version selected will be the latest stable release.
 
 If "all" is specified as the dependency, all applicable dependencies will be updated.
 
 ### Clean generated files
 `-$ wisteria clean <classes | dependencies | targets | javadocs | metadata | natures | all>`
 
-Removes generated files for the selected target. `targets` removes jar files defined by the active configuration, including a configured `javadoc.target`. `javadocs` removes the configured Javadoc output directory and configured Javadoc jar. `all` includes both of those plus the existing classes, dependency cache, metadata, and nature cleanup.
+Removes generated files for the selected target. `targets` removes jar files defined by the active 
+configuration, including a configured `javadoc.target`. `javadocs` removes the configured Javadoc 
+output directory and configured Javadoc jar. `all` includes both of those plus the existing classes, 
+dependency cache, metadata, and nature cleanup.
 
 ### Migrate a Wisteria 2 project
 `-$ wisteria migrate wisteria2`
 
-Converts a Wisteria 2 `project.toml` to the current format in place. Before writing the converted file, Wisteria writes a backup next to it using a name like `project.toml.wisteria2.bak`. If that backup already exists, the next available numbered backup is used.
+Converts a Wisteria 2 `project.toml` to the current format in place. Before writing the converted 
+file, Wisteria writes a backup next to it using a name like `project.toml.wisteria2.bak`. If that 
+backup already exists, the next available numbered backup is used.
 
-The converter maps v2 `project.libraries` entries to local dependency groups, maps each `[task.<name>]` table to `[configuration.<name>]`, and converts common javac `arguments` into structured `compiler_flags` when possible. Use `--project <project file>` to migrate a project file with a different path.
+The converter maps v2 `project.libraries` entries to local dependency groups, maps each 
+`[task.<name>]` table to `[configuration.<name>]`, and converts common javac `arguments` into 
+structured `compiler_flags` when possible. Use `--project <project file>` to migrate a project file
+with a different path.
 
 ## project.toml:
 Projects are defined inside of a `project.toml` file at the root of the project hierarchy.
 
 ### `[project]`
-Contains basic information about your project, such as the name, version, and description. The name and version can be referenced as `{project_name}` and `{version}` in a configuration's `targets`.
+Contains basic information about your project, such as the name, version, and description. The name 
+and version can be referenced as `{project_name}` and `{version}` in a configuration's `targets`.
 
-Also found here are a project's `natures`, which are "eclipse" and "maven" by default. Natures define what environments a project should be compatible with.
+Also found here are a project's `natures`, which are "eclipse" and "maven" by default. Natures 
+define what environments a project should be compatible with.
 
 ### `[dependencies.<source>]`
-Declares the dependencies in use by your project and exposes them to be used by a configuration. Dependency declarations are grouped by source type, and each dependency can then be referenced by name from a configuration.
+Declares the dependencies in use by your project and exposes them to be used by a configuration. 
+Dependency declarations are grouped by source type, and each dependency can then be referenced by 
+name from a configuration.
 ```toml
 [dependencies.archive]
 # Resolves the specified file
@@ -135,7 +162,9 @@ pinned-github-library = { username = "Example", repository = "LibExample", tag =
 preview-github-library = { username = "Example", repository = "LibExample", release_type = "prerelease" }
 ```
 
-Recognized dependency groups are `archive`, `folder`, `url`, `maven`, `github`, `local_repository`, and `script`. Legacy flat dependency declarations with `type = "..."` are migrated in memory while loading, but new project files should use grouped tables.
+Recognized dependency groups are `archive`, `folder`, `url`, `maven`, `github`, `local_repository`, 
+and `script`. Legacy flat dependency declarations with `type = "..."` are migrated in memory while 
+loading, but new project files should use grouped tables.
 
 ### `[configuration.<config>]`
 Defines the workspace settings that make up how a project should be interacted with and built.
