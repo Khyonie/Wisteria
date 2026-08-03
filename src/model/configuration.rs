@@ -2,18 +2,14 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use toml::{Table, Value};
+use toml::{value::Array, Table, Value};
 
 use crate::{
     build::{
         javadoc::ImplicitJavadocTask,
         run::ImplicitRunTask,
         task::{DefinedTask, ImplicitBuildTask, TaskRunner},
-    },
-    cli::args::StartupFlags,
-    config::toml_utils,
-    java::compiler_flags::CompilerFlags,
-    util::consts,
+    }, cli::args::StartupFlags, config::toml_utils, dependency::reference::{DependencyReference, DependencyScope, PackagingType}, java::compiler_flags::CompilerFlags, util::{consts, toml_utils::{read_optional_string, read_string}}
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -52,7 +48,7 @@ impl JavadocConfiguration {
 pub struct Configuration {
     name: String,
     sources: Option<Vec<String>>,
-    dependencies: Option<Vec<String>>,
+    dependencies: Option<Vec<DependencyReference>>,
     shaded: Option<Vec<String>>,
     includes: Option<Vec<String>>,
     targets: Option<Vec<String>>,
@@ -76,7 +72,7 @@ impl Configuration {
     ) -> Result<Self, String> {
         let sources = read_optional_string_array_for_configuration(&name, "sources", toml)?;
         let dependencies =
-            read_optional_string_array_for_configuration(&name, "dependencies", toml)?;
+            read_optional_dependency_array_for_configuration(&name, "dependencies", toml)?;
         let shaded = read_optional_string_array_for_configuration(&name, "shaded", toml)?;
         let includes = read_optional_string_array_for_configuration(&name, "includes", toml)?;
         let targets = read_optional_string_array_for_configuration(&name, "targets", toml)?;
@@ -201,7 +197,7 @@ impl Configuration {
         self.sources.as_ref()
     }
 
-    pub fn dependencies(&self) -> Option<&Vec<String>> {
+    pub fn dependencies(&self) -> Option<&Vec<DependencyReference>> {
         self.dependencies.as_ref()
     }
 
@@ -424,6 +420,72 @@ fn read_optional_string_array_for_configuration(
 ) -> Result<Option<Vec<String>>, String> {
     toml_utils::read_optional_string_array(key, toml)
         .map_err(|error| contextual_configuration_error(configuration_name, key, error))
+}
+
+fn read_optional_dependency_array_for_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<Option<Vec<DependencyReference>>, String> {
+    let mut references = Vec::new();
+    
+    // TODO This does not handle situations where the value is not an array
+    let array: &Array;
+    if let Some(array_value) = toml.get(key) && let Some(array_reference) = array_value.as_array()
+    {
+        array = array_reference;
+    } else {
+        return Ok(None)
+    }
+
+    for v in array
+    {
+        // Legacy format
+        if let Some(s) = v.as_str()
+        {
+            let reference = DependencyReference::new(
+                String::from(s), 
+                DependencyScope::Compile, 
+                None
+            );
+
+            references.push(reference)
+        }
+
+        // New format
+        if let Some(t) = v.as_table()
+        {
+            let reference = read_table_as_dependency_reference(configuration_name, t)?;
+
+            references.push(reference)
+        }
+    }
+
+    Ok(Some(references))
+}
+
+fn read_table_as_dependency_reference(configuration_name: &str, toml: &Table) -> Result<DependencyReference, String>
+{
+    let name = read_string("name", toml)
+        .map_err(| e | contextual_configuration_error(configuration_name, "name", e))?;
+
+    let scope: DependencyScope = read_optional_string("scope", toml)
+        .map_err(|e| contextual_configuration_error(configuration_name, "scope", e))?
+        .unwrap_or(String::from("compile"))
+        .try_into()?;
+
+    let packaging: Option<PackagingType> = read_optional_string("package", toml)
+        .map_err(|e| contextual_configuration_error(configuration_name, "package", e))?
+        .map(|p| p.try_into())
+        .transpose()?;
+
+    let reference = DependencyReference::new(
+        name, 
+        scope, 
+        packaging
+    );
+
+    Ok(reference)
 }
 
 fn contextual_configuration_error(configuration_name: &str, key: &str, error: String) -> String {
