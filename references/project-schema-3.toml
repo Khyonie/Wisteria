@@ -14,7 +14,7 @@
 
 [project]
 name = "Wisteria"
-description = "Project discription."
+description = "Project description."
 version = "0.1.0"
 natures = [ "eclipse", "maven" ]
 authors = [ "Khyonie", "AnotherAuthor" ]
