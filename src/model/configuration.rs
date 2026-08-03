@@ -2,14 +2,19 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use toml::{value::Array, Table, Value};
+use toml::{Table, Value};
 
 use crate::{
     build::{
         javadoc::ImplicitJavadocTask,
         run::ImplicitRunTask,
         task::{DefinedTask, ImplicitBuildTask, TaskRunner},
-    }, cli::args::StartupFlags, config::toml_utils, dependency::reference::{DependencyReference, DependencyScope, PackagingType}, java::compiler_flags::CompilerFlags, util::{consts, toml_utils::{read_optional_string, read_string}}
+    },
+    cli::args::StartupFlags,
+    config::toml_utils::{self, read_optional_string, read_string},
+    dependency::{DependencyReference, DependencyScope, PackagingType},
+    java::compiler_flags::CompilerFlags,
+    util::consts,
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -49,7 +54,6 @@ pub struct Configuration {
     name: String,
     sources: Option<Vec<String>>,
     dependencies: Option<Vec<DependencyReference>>,
-    shaded: Option<Vec<String>>,
     includes: Option<Vec<String>>,
     targets: Option<Vec<String>>,
     javadoc: Option<JavadocConfiguration>,
@@ -73,7 +77,11 @@ impl Configuration {
         let sources = read_optional_string_array_for_configuration(&name, "sources", toml)?;
         let dependencies =
             read_optional_dependency_array_for_configuration(&name, "dependencies", toml)?;
-        let shaded = read_optional_string_array_for_configuration(&name, "shaded", toml)?;
+        if toml.contains_key("shaded") {
+            return Err(format!(
+                "Invalid [configuration.{name}].shaded: `shaded` was removed.\nFix: move each shaded dependency into `dependencies` as `{{ name = \"dependency-name\", package = \"shade\" }}`."
+            ));
+        }
         let includes = read_optional_string_array_for_configuration(&name, "includes", toml)?;
         let targets = read_optional_string_array_for_configuration(&name, "targets", toml)?;
         let javadoc = match toml.get("javadoc") {
@@ -180,7 +188,6 @@ impl Configuration {
             name,
             sources,
             dependencies,
-            shaded,
             includes,
             targets,
             javadoc,
@@ -199,10 +206,6 @@ impl Configuration {
 
     pub fn dependencies(&self) -> Option<&Vec<DependencyReference>> {
         self.dependencies.as_ref()
-    }
-
-    pub fn shaded(&self) -> Option<&Vec<String>> {
-        self.shaded.as_ref()
     }
 
     pub fn includes(&self) -> Option<&Vec<String>> {
@@ -316,10 +319,7 @@ impl Configuration {
         }
 
         if let Some(d) = &self.dependencies {
-            println!(
-                "│\tDependencies     {}",
-                toml_utils::string_vec_to_string(d)
-            )
+            println!("│\tDependencies     {}", dependency_references_to_string(d))
         }
 
         if let Some(i) = &self.includes {
@@ -428,64 +428,76 @@ fn read_optional_dependency_array_for_configuration(
     toml: &Table,
 ) -> Result<Option<Vec<DependencyReference>>, String> {
     let mut references = Vec::new();
-    
-    // TODO This does not handle situations where the value is not an array
-    let array: &Array;
-    if let Some(array_value) = toml.get(key) && let Some(array_reference) = array_value.as_array()
-    {
-        array = array_reference;
-    } else {
-        return Ok(None)
-    }
 
-    for v in array
-    {
-        // Legacy format
-        if let Some(s) = v.as_str()
-        {
-            let reference = DependencyReference::new(
-                String::from(s), 
-                DependencyScope::Compile, 
-                None
-            );
+    let Some(value) = toml.get(key) else {
+        return Ok(None);
+    };
 
-            references.push(reference)
+    let Some(array) = value.as_array() else {
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}].{key}: expected an array of dependency names or reference tables, found {}.\nFix: use `dependencies = [ \"dependency-name\" ]` or `dependencies = [ {{ name = \"dependency-name\", scope = \"compile\" }} ]`.",
+            value.type_str()
+        ));
+    };
+
+    for (index, value) in array.iter().enumerate() {
+        if let Some(name) = value.as_str() {
+            references.push(DependencyReference::new(
+                String::from(name),
+                DependencyScope::Compile,
+                None,
+            ));
+            continue;
         }
 
-        // New format
-        if let Some(t) = v.as_table()
-        {
-            let reference = read_table_as_dependency_reference(configuration_name, t)?;
-
-            references.push(reference)
+        if let Some(table) = value.as_table() {
+            references.push(read_table_as_dependency_reference(
+                configuration_name,
+                index,
+                table,
+            )?);
+            continue;
         }
+
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}].{key}[{index}]: expected a dependency name string or an inline table, found {}.\nFix: use `\"dependency-name\"` or `{{ name = \"dependency-name\", scope = \"compile\" }}`.",
+            value.type_str()
+        ));
     }
 
     Ok(Some(references))
 }
 
-fn read_table_as_dependency_reference(configuration_name: &str, toml: &Table) -> Result<DependencyReference, String>
-{
-    let name = read_string("name", toml)
-        .map_err(| e | contextual_configuration_error(configuration_name, "name", e))?;
+fn read_table_as_dependency_reference(
+    configuration_name: &str,
+    index: usize,
+    toml: &Table,
+) -> Result<DependencyReference, String> {
+    let name = read_string("name", toml).map_err(|error| {
+        contextual_dependency_reference_error(configuration_name, index, "name", error)
+    })?;
 
     let scope: DependencyScope = read_optional_string("scope", toml)
-        .map_err(|e| contextual_configuration_error(configuration_name, "scope", e))?
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "scope", error)
+        })?
         .unwrap_or(String::from("compile"))
-        .try_into()?;
+        .try_into()
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "scope", error)
+        })?;
 
     let packaging: Option<PackagingType> = read_optional_string("package", toml)
-        .map_err(|e| contextual_configuration_error(configuration_name, "package", e))?
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "package", error)
+        })?
         .map(|p| p.try_into())
-        .transpose()?;
+        .transpose()
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "package", error)
+        })?;
 
-    let reference = DependencyReference::new(
-        name, 
-        scope, 
-        packaging
-    );
-
-    Ok(reference)
+    Ok(DependencyReference::new(name, scope, packaging))
 }
 
 fn contextual_configuration_error(configuration_name: &str, key: &str, error: String) -> String {
@@ -493,6 +505,23 @@ fn contextual_configuration_error(configuration_name: &str, key: &str, error: St
         "Invalid [configuration.{configuration_name}].{key}: {}",
         error
     )
+}
+
+fn contextual_dependency_reference_error(
+    configuration_name: &str,
+    index: usize,
+    key: &str,
+    error: String,
+) -> String {
+    format!("Invalid [configuration.{configuration_name}].dependencies[{index}].{key}: {error}")
+}
+
+fn dependency_references_to_string(references: &[DependencyReference]) -> String {
+    references
+        .iter()
+        .map(|reference| reference.name())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn read_optional_javadoc_string(
@@ -541,6 +570,15 @@ mod tests {
         toml.parse::<Table>().unwrap()
     }
 
+    fn dependency_names(configuration: &Configuration) -> Vec<&str> {
+        configuration
+            .dependencies()
+            .unwrap()
+            .iter()
+            .map(DependencyReference::name)
+            .collect()
+    }
+
     #[test]
     fn configuration_defaults_project_environment_and_java_version() {
         let configuration = Configuration::from(
@@ -582,8 +620,10 @@ mod tests {
             &table(
                 r#"
                 sources = "src/"
-                dependencies = [ "dep-a", "dep-b" ]
-                shaded = [ "dep-b" ]
+                dependencies = [
+                    "dep-a",
+                    { name = "dep-b", scope = "runtime", package = "shade" },
+                ]
                 includes = [ "plugin.yml" ]
                 targets = [ "target/demo.jar" ]
                 entry = "com.example.Main"
@@ -606,14 +646,16 @@ mod tests {
             configuration.sources().unwrap(),
             &vec![String::from("src/")]
         );
+        assert_eq!(dependency_names(&configuration), vec!["dep-a", "dep-b"]);
         assert_eq!(
-            configuration.dependencies().unwrap(),
-            &vec![String::from("dep-a"), String::from("dep-b")]
+            configuration.dependencies().unwrap()[0].scope(),
+            DependencyScope::Compile
         );
         assert_eq!(
-            configuration.shaded().unwrap(),
-            &vec![String::from("dep-b")]
+            configuration.dependencies().unwrap()[1].scope(),
+            DependencyScope::Runtime
         );
+        assert!(configuration.dependencies().unwrap()[1].is_shaded());
         assert_eq!(
             configuration.includes().unwrap(),
             &vec![String::from("plugin.yml")]
@@ -765,10 +807,7 @@ mod tests {
             child.sources().unwrap(),
             &vec![String::from("src/main/"), String::from("src/child/")]
         );
-        assert_eq!(
-            child.dependencies().unwrap(),
-            &vec![String::from("dep-b"), String::from("dep-a")]
-        );
+        assert_eq!(dependency_names(&child), vec!["dep-b", "dep-a"]);
         assert_eq!(child.includes().unwrap(), &vec![String::from("plugin.yml")]);
         assert_eq!(
             child.targets().unwrap(),
@@ -822,6 +861,27 @@ mod tests {
 
         assert!(error.contains("Invalid [configuration.main].sources"));
         assert!(error.contains("sources = [ \"src/\" ]"));
+    }
+
+    #[test]
+    fn rejects_removed_shaded_configuration() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [ "dep-a" ]
+                shaded = [ "dep-a" ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected removed shaded field to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].shaded"));
+        assert!(error.contains("package = \"shade\""));
     }
 
     #[test]

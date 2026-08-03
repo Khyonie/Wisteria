@@ -220,10 +220,10 @@ fn dependency_javadoc_links(project: &Project, configuration: &Configuration) ->
     };
 
     let mut links = Vec::new();
-    for dependency_name in dependencies {
+    for reference in dependencies {
         let Some(javadoc) = project
             .dependencies()
-            .get(dependency_name)
+            .get(reference.name())
             .and_then(|dependency| dependency.javadoc())
         else {
             continue;

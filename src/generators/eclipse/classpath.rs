@@ -49,23 +49,27 @@ pub fn generate_classpath(
 
     if let Some(dependencies) = configuration.dependencies() {
         let mut width: usize = usize::MIN;
-        for name in dependencies.iter() {
-            width = usize::max(name.len(), width);
+        for reference in dependencies.iter() {
+            width = usize::max(reference.name().len(), width);
         }
 
         width += 5;
         let size = dependencies.len();
 
-        for (index, d) in dependencies.iter().enumerate() {
+        for (index, reference) in dependencies.iter().enumerate() {
+            if !reference.scope().is_on_compile_classpath() {
+                continue;
+            }
+
             print!(
                 "({}/{size}) Resolving {:width$}",
                 index + 1,
-                format!("{d} ... ")
+                format!("{} ... ", reference.name())
             );
-            let dependencies_opt = match project.dependencies().get(d) {
+            let dependencies_opt = match project.dependencies().get(reference.name()) {
                 Some(dep) => dep,
                 None => {
-                    println!("Unknown dependency \"{d}\"!");
+                    println!("Unknown dependency \"{}\"!", reference.name());
                     continue;
                 }
             };
@@ -76,7 +80,7 @@ pub fn generate_classpath(
             }
 
             match dependencies_opt.resolve(
-                d,
+                reference.name(),
                 configuration.environment(),
                 regexes,
                 UpdateContext::ResolveOnly,

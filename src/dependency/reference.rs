@@ -1,29 +1,52 @@
-#[derive(Clone)]
-pub struct DependencyReference
-{
+use std::fmt;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DependencyReference {
     name: String,
     scope: DependencyScope,
-    packaging: Option<PackagingType>
+    packaging: Option<PackagingType>,
 }
 
-impl DependencyReference
-{
-    pub fn new(name: String, scope: DependencyScope, packaging: Option<PackagingType>) -> Self
-    {
-        Self { name, scope, packaging }
+impl DependencyReference {
+    pub fn new(name: String, scope: DependencyScope, packaging: Option<PackagingType>) -> Self {
+        Self {
+            name,
+            scope,
+            packaging,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn scope(&self) -> DependencyScope {
+        self.scope
+    }
+
+    pub fn packaging(&self) -> Option<PackagingType> {
+        self.packaging
+    }
+
+    pub fn is_shaded(&self) -> bool {
+        self.packaging == Some(PackagingType::Shade)
     }
 }
 
-#[derive(Default, Clone)]
-pub enum PackagingType
-{
+impl fmt::Display for DependencyReference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackagingType {
     #[default]
     Shade,
 }
 
-#[derive(Default, Clone)]
-pub enum DependencyScope
-{
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DependencyScope {
     #[default]
     Compile,
     Runtime,
@@ -31,31 +54,50 @@ pub enum DependencyScope
     Test,
 }
 
-impl TryFrom<String> for PackagingType
-{
-    type Error = String;
+impl DependencyScope {
+    pub fn is_on_compile_classpath(self) -> bool {
+        matches!(self, Self::Compile | Self::Provided)
+    }
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str()
-        {
-            "shade" => Ok(PackagingType::Shade),
-            _ => Err(format!("No such packaging type \"{value}\""))
+    pub fn is_on_runtime_classpath(self) -> bool {
+        matches!(self, Self::Compile | Self::Runtime)
+    }
+
+    pub fn is_test_only(self) -> bool {
+        matches!(self, Self::Test)
+    }
+
+    pub fn maven_scope(self) -> Option<&'static str> {
+        match self {
+            Self::Compile => None,
+            Self::Runtime => Some("runtime"),
+            Self::Provided => Some("provided"),
+            Self::Test => Some("test"),
         }
     }
 }
 
-impl TryFrom<String> for DependencyScope
-{
+impl TryFrom<String> for PackagingType {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str()
-        {
+        match value.to_lowercase().as_str() {
+            "shade" => Ok(PackagingType::Shade),
+            _ => Err(format!("No such packaging type \"{value}\"")),
+        }
+    }
+}
+
+impl TryFrom<String> for DependencyScope {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
             "compile" => Ok(DependencyScope::Compile),
             "runtime" => Ok(DependencyScope::Runtime),
             "test" => Ok(DependencyScope::Test),
             "provided" => Ok(DependencyScope::Provided),
-            _ => Err(format!("No such dependency scope \"{value}\""))
+            _ => Err(format!("No such dependency scope \"{value}\"")),
         }
     }
 }

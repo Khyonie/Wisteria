@@ -44,8 +44,12 @@ pub fn trigger_switch(project: Result<Project, String>, args: &[String], flags: 
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
     if let Some(dependencies) = configuration.dependencies() {
+        let dependency_names: Vec<String> = dependencies
+            .iter()
+            .map(|reference| reference.name().to_string())
+            .collect();
         failed_downloads = update_dependencies_with_context(
-            dependencies,
+            &dependency_names,
             project.dependencies(),
             configuration.environment(),
             &regexes,

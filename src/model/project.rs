@@ -459,8 +459,13 @@ mod tests {
             &vec![String::from("src/child/"), String::from("src/main/")]
         );
         assert_eq!(
-            child.dependencies().unwrap(),
-            &vec![String::from("child-dep"), String::from("base-dep")]
+            child
+                .dependencies()
+                .unwrap()
+                .iter()
+                .map(|reference| reference.name())
+                .collect::<Vec<_>>(),
+            vec!["child-dep", "base-dep"]
         );
         assert_eq!(
             child.targets().unwrap(),

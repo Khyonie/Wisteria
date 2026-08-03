@@ -136,7 +136,9 @@ fn value_hint(key: &str, expected: &str) -> String {
         "dependencies" => {
             String::from("Fix: use `dependencies = [ \"dependency-name\" ]` or remove the key.")
         }
-        "shaded" => String::from("Fix: use `shaded = [ \"dependency-name\" ]` or remove the key."),
+        "shaded" => String::from(
+            "Fix: `shaded` was removed; use `dependencies = [ { name = \"dependency-name\", package = \"shade\" } ]`.",
+        ),
         "includes" => String::from("Fix: use `includes = [ \"plugin.yml\" ]` or remove the key."),
         "targets" => String::from(
             "Fix: use `targets = [ \"target/{project_name}.jar\" ]` or `targets = \"target/{project_name}.jar\"`.",
