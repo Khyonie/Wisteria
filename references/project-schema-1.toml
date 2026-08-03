@@ -1,0 +1,49 @@
+#══════════════════════════════════════════════════════════════════════════════════════════════════ 
+# Schema 1
+#
+# The first stable Wisteria 3 configuration format. Minor changes were added before this, namely 
+# the addition of shaded dependencies.
+# 
+#══════════════════════════════════════════════════════════════════════════════════════════════════ 
+
+[project]
+name = "Wisteria"
+description = "Project discription."
+version = "0.1.0"
+natures = [ "eclipse", "maven" ]
+authors = [ "Khyonie", "AnotherAuthor" ]
+sourcepage = "https://github.com/Khyonie/Wisteria"
+
+# Dependencies
+#────────────────────────────────────────────────────────────────────────────────
+[dependencies]
+file-dep = { type = "loadArchive", path = "lib/Archive.jar" }
+folder-dep = { type = "loadFolder", path = "lib/", recursive = true }
+url-dep = { type = "fetchFromUrl", url = "https://libs.example.com/Example.jar" }
+maven-dep = { type = "fetchFromMaven", group_id = "com.google.code.gson", artifact_id = "gson", version = "2.14.0" }
+github-dep = { type = "fetchFromGithub", name = "Example", "ExampleLib", asset = "ExampleLib.jar", tag = "v1.0.0" }
+
+[configuration.main]
+sources = [ "src/main/" ]
+targets = [ "outputs/{configuration}-{version}/{project_name}.jar" ]
+dependencies = [ "file-dep", "folder-dep", "url-dep", "maven-dep", "github-dep" ]
+shaded = [ "file-dep" ]
+includes = [ "default-config.toml" ]
+entry = "com.example.wisteria.App"
+java_version = 17
+
+# Configurations
+#────────────────────────────────────────────────────────────────────────────────
+[configuration.main.compiler_flags]
+release_target = 17
+enable_preview_features = true
+javadoc_all_lints = true
+source_all_lints = true
+no_warnings = true
+deprecation_info = true
+store_parameter_names = true
+source_encoding = "utf8"
+
+[configuration.test]
+inherit = "main"
+sources = [ "src/test/" ]

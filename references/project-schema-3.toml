@@ -1,0 +1,72 @@
+#══════════════════════════════════════════════════════════════════════════════════════════════════ 
+# Schema 3
+#
+# DEPENDENCY REFERENCES
+# Dependency references now may define where it is expected to be resolved from, and when, using
+# Maven semantics.
+#
+# DEPENDENCY PACKAGING
+# Dependency references may optionally declare their packaging type: whether to bundle them into a
+# fat jar, etc.
+#
+# This is a breaking change, existing "shaded" arrays will throw errors.
+#══════════════════════════════════════════════════════════════════════════════════════════════════ 
+
+[project]
+name = "Wisteria"
+description = "Project discription."
+version = "0.1.0"
+natures = [ "eclipse", "maven" ]
+authors = [ "Khyonie", "AnotherAuthor" ]
+sourcepage = "https://github.com/Khyonie/Wisteria"
+
+# Dependencies
+#────────────────────────────────────────────────────────────────────────────────
+[dependencies.archive]
+file-dep = { path = "lib/Archive.jar" }
+
+[dependencies.folder]
+folder-dep = { path = "lib/", recursive = true }
+
+[dependencies.url]
+url-dep = { url = "https://libs.example.com/Example.jar" }
+
+[dependencies.maven]
+maven-dep = { group_id = "com.google.code.gson", artifact_id = "gson" }
+
+[dependencies.github]
+github-dep = { repository = "Example/ExampleLib" }
+
+# Configurations
+#────────────────────────────────────────────────────────────────────────────────
+[configuration.main]
+sources = [ "src/main/" ]
+targets = [ "outputs/{configuration}-{version}/{project_name}.jar" ]
+dependencies = [
+	"folder-dep",                                                # Legacy format
+	{ name = "url-dep" },                                        # Name
+	{ name = "maven-dep", scope = "test" },                      # Name + scope
+	{ name = "github-dep", scope = "provided" },                 # Name + scope
+	{ name = "file-dep", scope = "compile", package = "shade" }, # Name + scope + package
+]
+includes = [ "default-config.toml" ]
+entry = "com.example.wisteria.App"
+java_version = 17
+
+[configuration.main.javadoc]
+output_dir = "outputs/{configuration}-{version}-javadoc/"
+target = "outputs/{configuration}-{version}/{project-name}-javadoc"
+
+[configuration.main.compiler_flags]
+release_target = 17
+enable_preview_features = true
+javadoc_all_lints = true
+source_all_lints = true
+no_warnings = true
+deprecation_info = true
+store_parameter_names = true
+source_encoding = "utf8"
+
+[configuration.test]
+inherit = "main"
+sources = [ "src/test/" ]
