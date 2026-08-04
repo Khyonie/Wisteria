@@ -4,7 +4,7 @@ use std::{
     process::exit,
 };
 
-use crate::cli::args::StartupFlags;
+use crate::{cli::args::StartupFlags, generators::git};
 use crate::cli::commands::print_header;
 use crate::generators::{WISTERIA_METADATA_TEMPLATE, generate_wisteria_project};
 use crate::util::consts;
@@ -24,6 +24,12 @@ pub fn trigger_create(args: &[String], flags: &StartupFlags) {
     print_header();
 
     if let Err(error) = create_project(&path, &args[2], flags.minimal) {
+        println!("{error}");
+        exit(1)
+    }
+
+    // Attempt to initialize git repository
+    if flags.no_git && let Err(error) = git::initialize_git_repository(&path) {
         println!("{error}");
         exit(1)
     }
