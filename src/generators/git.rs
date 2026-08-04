@@ -1,6 +1,8 @@
-use std::{fs, path::Path};
+use std::{fs::{self}, path::Path};
 
 pub const GIT_DIRECTORY: &str = ".git";
+pub const GIT_IGNORE: &str = ".gitignore";
+pub const GIT_IGNORE_CONTENTS: &str = ".wisteria"; // Ignore wisteria file by default
 
 pub const GIT_HEAD_PATH: &str = "HEAD";
 pub const HEAD_CONTENTS: &str = "ref: refs/heads/master\n";
@@ -38,6 +40,10 @@ pub fn initialize_git_repository(project_path: &Path) -> Result<(), String>
     fs::write(git_path.join(GIT_HEAD_PATH), HEAD_CONTENTS)
         .map_err(|e| e.to_string())?;
     fs::write(git_path.join(GIT_CONFIG_PATH), GIT_CONFIG_CONTENTS)
+        .map_err(|e| e.to_string())?;
+    
+    // Gitignore
+    fs::write(project_path.join(GIT_IGNORE), GIT_IGNORE_CONTENTS)
         .map_err(|e| e.to_string())?;
 
     Ok(())
