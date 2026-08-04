@@ -154,6 +154,8 @@ fn read_project_libraries(
     project_root: &Path,
     warnings: &mut Vec<String>,
 ) -> Vec<String> {
+    let legacy_library_dir = project_root.join(consts::LEGACY_PROJECT_LIBRARY_DIR);
+
     match project.get("libraries") {
         Some(_) => match read_string_array(project, "libraries") {
             Some(libraries) => libraries,
@@ -164,8 +166,8 @@ fn read_project_libraries(
                 Vec::new()
             }
         },
-        None if project_root.join(consts::PROJECT_LIBRARY_DIR).exists() => {
-            vec![format!("{}/", consts::PROJECT_LIBRARY_DIR)]
+        None if legacy_library_dir.exists() => {
+            vec![format!("{}/", consts::LEGACY_PROJECT_LIBRARY_DIR)]
         }
         None => {
             warnings.push(String::from(

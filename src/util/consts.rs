@@ -48,7 +48,7 @@ pub const MANIFEST_DIR: &str = ".wisteria/work/bin/META-INF";
 pub const MANIFEST_FILE: &str = ".wisteria/work/bin/META-INF/MANIFEST.MF";
 
 pub const PROJECT_SOURCE_DIR: &str = "src";
-pub const PROJECT_LIBRARY_DIR: &str = "lib";
+pub const LEGACY_PROJECT_LIBRARY_DIR: &str = "lib";
 
 pub const DEFAULT_JAVADOC_DIR: &str = "target/javadoc/{configuration}/";
 

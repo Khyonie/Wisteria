@@ -79,12 +79,6 @@ fn write_project_files(path: &Path, project_name: &str, minimal: bool) -> Result
             path.join(consts::PROJECT_SOURCE_DIR).display()
         )
     })?;
-    create_dir(path.join(consts::PROJECT_LIBRARY_DIR)).map_err(|e| {
-        format!(
-            "Could not create library directory \"{}\": {e}",
-            path.join(consts::PROJECT_LIBRARY_DIR).display()
-        )
-    })?;
 
     Ok(())
 }
@@ -119,7 +113,11 @@ mod tests {
         assert!(project_path.join(consts::METADATA_FILE).is_file());
         assert!(project_path.join(consts::PROJECT_FILE).is_file());
         assert!(project_path.join(consts::PROJECT_SOURCE_DIR).is_dir());
-        assert!(project_path.join(consts::PROJECT_LIBRARY_DIR).is_dir());
+        assert!(
+            !project_path
+                .join(consts::LEGACY_PROJECT_LIBRARY_DIR)
+                .exists()
+        );
     }
 
     #[test]
