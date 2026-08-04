@@ -29,7 +29,7 @@ pub fn trigger_create(args: &[String], flags: &StartupFlags) {
     }
 
     // Attempt to initialize git repository
-    if flags.no_git && let Err(error) = git::initialize_git_repository(&path) {
+    if !flags.no_git && let Err(error) = git::initialize_git_repository(&path) {
         println!("{error}");
         exit(1)
     }
