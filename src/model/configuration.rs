@@ -473,6 +473,20 @@ fn read_table_as_dependency_reference(
     index: usize,
     toml: &Table,
 ) -> Result<DependencyReference, String> {
+    // Validate present entries
+    for key in toml.keys() {
+        if !matches!(key.as_str(), "name" | "scope" | "package") {
+            return Err(contextual_dependency_reference_error(
+                configuration_name,
+                index,
+                key,
+                format!(
+                    "Unknown dependency reference key `{key}`.\nFix: use only `name`, `scope`, and `package`, or remove the unrecognized key."
+                ),
+            ));
+        }
+    }
+
     let name = read_string("name", toml).map_err(|error| {
         contextual_dependency_reference_error(configuration_name, index, "name", error)
     })?;
@@ -497,6 +511,20 @@ fn read_table_as_dependency_reference(
             contextual_dependency_reference_error(configuration_name, index, "package", error)
         })?;
 
+    // Check for incompatible scope + packaging combinations
+    if matches!(packaging, Some(PackagingType::Shade))
+        && matches!(scope, DependencyScope::Provided | DependencyScope::Test)
+    {
+        return Err(contextual_dependency_reference_error(
+            configuration_name,
+            index,
+            "package",
+            String::from(
+                "Shaded packaging type is incompatible with provided/test scope.\nFix: remove `package = \"shade\"` or change scope to `compile` or `runtime`.",
+            ),
+        ));
+    }
+
     Ok(DependencyReference::new(name, scope, packaging))
 }
 
@@ -519,7 +547,16 @@ fn contextual_dependency_reference_error(
 fn dependency_references_to_string(references: &[DependencyReference]) -> String {
     references
         .iter()
-        .map(|reference| reference.name())
+        .map(|reference| {
+            format!(
+                "{} ({}{})",
+                reference.name(),
+                reference.scope(),
+                reference
+                    .packaging()
+                    .map_or_else(String::new, |p| format!("/{p}"))
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -882,6 +919,50 @@ mod tests {
 
         assert!(error.contains("Invalid [configuration.main].shaded"));
         assert!(error.contains("package = \"shade\""));
+    }
+
+    #[test]
+    fn rejects_unknown_dependency_reference_keys_with_precise_path() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [
+                    { name = "dep-a", scpoe = "runtime" },
+                ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected unknown dependency reference key to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[0].scpoe"));
+        assert!(error.contains("use only `name`, `scope`, and `package`"));
+    }
+
+    #[test]
+    fn rejects_shaded_provided_dependency_reference() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [
+                    { name = "dep-a", scope = "provided", package = "shade" },
+                ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected incompatible dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[0].package"));
+        assert!(error.contains("incompatible with provided/test scope"));
     }
 
     #[test]

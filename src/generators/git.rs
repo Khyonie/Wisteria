@@ -1,4 +1,7 @@
-use std::{fs::{self}, path::Path};
+use std::{
+    fs::{self},
+    path::Path,
+};
 
 pub const GIT_DIRECTORY: &str = ".git";
 pub const GIT_IGNORE: &str = ".gitignore";
@@ -17,34 +20,26 @@ pub const GIT_CONFIG_CONTENTS: &str = "\
 [core]
 \trepositoryformatversion = 0
 \tbare = false
-\tligallrefupdates = true
+\tlogallrefupdates = true
 ";
 
-pub fn initialize_git_repository(project_path: &Path) -> Result<(), String>
-{
+pub fn initialize_git_repository(project_path: &Path) -> Result<(), String> {
     let git_path = project_path.join(GIT_DIRECTORY);
 
     // The folder should be very new, so it shouldn't exist and we don't need to check if it does.
 
     // Folder structure
-    fs::create_dir_all(git_path.join(GIT_OBJECTS_INFO))
-        .map_err(|e| e.to_string())?;
-    fs::create_dir_all(git_path.join(GIT_OBJECTS_PACK))
-        .map_err(|e| e.to_string())?;
-    fs::create_dir_all(git_path.join(GIT_REFS_HEAD))
-        .map_err(|e| e.to_string())?;
-    fs::create_dir_all(git_path.join(GIT_REFS_TAGS))
-        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(git_path.join(GIT_OBJECTS_INFO)).map_err(|e| e.to_string())?;
+    fs::create_dir_all(git_path.join(GIT_OBJECTS_PACK)).map_err(|e| e.to_string())?;
+    fs::create_dir_all(git_path.join(GIT_REFS_HEAD)).map_err(|e| e.to_string())?;
+    fs::create_dir_all(git_path.join(GIT_REFS_TAGS)).map_err(|e| e.to_string())?;
 
     // Files
-    fs::write(git_path.join(GIT_HEAD_PATH), HEAD_CONTENTS)
-        .map_err(|e| e.to_string())?;
-    fs::write(git_path.join(GIT_CONFIG_PATH), GIT_CONFIG_CONTENTS)
-        .map_err(|e| e.to_string())?;
-    
+    fs::write(git_path.join(GIT_HEAD_PATH), HEAD_CONTENTS).map_err(|e| e.to_string())?;
+    fs::write(git_path.join(GIT_CONFIG_PATH), GIT_CONFIG_CONTENTS).map_err(|e| e.to_string())?;
+
     // Gitignore
-    fs::write(project_path.join(GIT_IGNORE), GIT_IGNORE_CONTENTS)
-        .map_err(|e| e.to_string())?;
+    fs::write(project_path.join(GIT_IGNORE), GIT_IGNORE_CONTENTS).map_err(|e| e.to_string())?;
 
     Ok(())
 }

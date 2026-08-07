@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DependencyReference {
@@ -73,6 +73,25 @@ impl DependencyScope {
             Self::Runtime => Some("runtime"),
             Self::Provided => Some("provided"),
             Self::Test => Some("test"),
+        }
+    }
+}
+
+impl Display for DependencyScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DependencyScope::Compile => write!(f, "compile"),
+            DependencyScope::Runtime => write!(f, "runtime"),
+            DependencyScope::Provided => write!(f, "provided"),
+            DependencyScope::Test => write!(f, "test"),
+        }
+    }
+}
+
+impl Display for PackagingType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PackagingType::Shade => write!(f, "shade"),
         }
     }
 }
