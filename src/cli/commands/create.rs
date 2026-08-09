@@ -4,10 +4,10 @@ use std::{
     process::exit,
 };
 
-use crate::cli::args::StartupFlags;
 use crate::cli::commands::print_header;
 use crate::generators::{WISTERIA_METADATA_TEMPLATE, generate_wisteria_project};
 use crate::util::consts;
+use crate::{cli::args::StartupFlags, generators::git};
 
 pub fn trigger_create(args: &[String], flags: &StartupFlags) {
     if args[2].contains('/') || args[2].contains('\\') {
@@ -23,7 +23,7 @@ pub fn trigger_create(args: &[String], flags: &StartupFlags) {
 
     print_header();
 
-    if let Err(error) = create_project(&path, &args[2], flags.minimal) {
+    if let Err(error) = create_project(&path, &args[2], flags) {
         println!("{error}");
         exit(1)
     }
@@ -36,14 +36,21 @@ pub fn trigger_create(args: &[String], flags: &StartupFlags) {
     exit(0)
 }
 
-fn create_project(path: &Path, project_name: &str, minimal: bool) -> Result<(), String> {
+fn create_project(path: &Path, project_name: &str, flags: &StartupFlags) -> Result<(), String> {
     create_dir(path).map_err(|e| {
         format!(
             "Could not create a new project \"{project_name}\" in the current directory: {e}.\nFix: ensure that you have the correct permissions and try again."
         )
     })?;
 
-    if let Err(error) = write_project_files(path, project_name, minimal) {
+    if let Err(error) = write_project_files(path, project_name, flags.minimal) {
+        return Err(cleanup_partial_project(path, error));
+    }
+    // Attempt to initialize git repository
+
+    if !flags.no_git
+        && let Err(error) = git::initialize_git_repository(path)
+    {
         return Err(cleanup_partial_project(path, error));
     }
 
@@ -79,12 +86,6 @@ fn write_project_files(path: &Path, project_name: &str, minimal: bool) -> Result
             path.join(consts::PROJECT_SOURCE_DIR).display()
         )
     })?;
-    create_dir(path.join(consts::PROJECT_LIBRARY_DIR)).map_err(|e| {
-        format!(
-            "Could not create library directory \"{}\": {e}",
-            path.join(consts::PROJECT_LIBRARY_DIR).display()
-        )
-    })?;
 
     Ok(())
 }
@@ -113,13 +114,17 @@ mod tests {
         let temp = TempDir::new("create-project");
         let project_path = temp.path().join("Demo");
 
-        create_project(&project_path, "Demo", false).unwrap();
+        create_project(&project_path, "Demo", &StartupFlags::default()).unwrap();
 
         assert!(project_path.join(consts::WISTERIA_DIR).is_dir());
         assert!(project_path.join(consts::METADATA_FILE).is_file());
         assert!(project_path.join(consts::PROJECT_FILE).is_file());
         assert!(project_path.join(consts::PROJECT_SOURCE_DIR).is_dir());
-        assert!(project_path.join(consts::PROJECT_LIBRARY_DIR).is_dir());
+        assert!(
+            !project_path
+                .join(consts::LEGACY_PROJECT_LIBRARY_DIR)
+                .exists()
+        );
     }
 
     #[test]

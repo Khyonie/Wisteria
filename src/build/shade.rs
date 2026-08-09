@@ -6,6 +6,18 @@ use crate::util::consts;
 use crate::workspace::files;
 
 pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), String> {
+    // Clean shaded folder
+    let shaded_jar_path = PathBuf::from(consts::SHADED_OUT_PATH);
+    if shaded_jar_path.exists() {
+        fs::remove_dir_all(&shaded_jar_path)
+            .map_err(|e| format!("Failed to remove shaded work folder: {e}"))?
+    }
+
+    if let Err(e) = fs::create_dir_all(&shaded_jar_path) {
+        return Err(format!("Could not create shaded work folder: {e}"));
+    }
+
+    // Perform shading
     for shaded in shaded_jars {
         let file: File = match File::open(shaded) {
             Ok(f) => f,
@@ -26,11 +38,6 @@ pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), String> {
                 ));
             }
         };
-
-        let shaded_jar_path = PathBuf::from(consts::SHADED_OUT_PATH);
-        if let Err(e) = fs::create_dir_all(&shaded_jar_path) {
-            return Err(format!("Could not create shaded work folder: {e}"));
-        }
 
         if let Err(e) = archive.extract(consts::SHADED_OUT_PATH) {
             return Err(format!(

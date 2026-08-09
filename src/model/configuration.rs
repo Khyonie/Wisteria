@@ -11,7 +11,8 @@ use crate::{
         task::{DefinedTask, ImplicitBuildTask, TaskRunner},
     },
     cli::args::StartupFlags,
-    config::toml_utils,
+    config::toml_utils::{self, read_optional_string, read_string},
+    dependency::{DependencyReference, DependencyScope, PackagingType},
     java::compiler_flags::CompilerFlags,
     util::consts,
 };
@@ -52,8 +53,7 @@ impl JavadocConfiguration {
 pub struct Configuration {
     name: String,
     sources: Option<Vec<String>>,
-    dependencies: Option<Vec<String>>,
-    shaded: Option<Vec<String>>,
+    dependencies: Option<Vec<DependencyReference>>,
     includes: Option<Vec<String>>,
     targets: Option<Vec<String>>,
     javadoc: Option<JavadocConfiguration>,
@@ -76,8 +76,17 @@ impl Configuration {
     ) -> Result<Self, String> {
         let sources = read_optional_string_array_for_configuration(&name, "sources", toml)?;
         let dependencies =
-            read_optional_string_array_for_configuration(&name, "dependencies", toml)?;
-        let shaded = read_optional_string_array_for_configuration(&name, "shaded", toml)?;
+            read_optional_dependency_array_for_configuration(&name, "dependencies", toml)?;
+        if toml.contains_key("shaded") {
+            return Err(format!(
+                "Invalid [configuration.{name}].shaded: `shaded` was removed.\nFix: move each shaded dependency into `dependencies` as `{{ name = \"dependency-name\", package = \"shade\" }}`."
+            ));
+        }
+
+        if let Some(refs) = dependencies.as_ref() {
+            validate_unique_dependencies(&name, refs)?
+        }
+
         let includes = read_optional_string_array_for_configuration(&name, "includes", toml)?;
         let targets = read_optional_string_array_for_configuration(&name, "targets", toml)?;
         let javadoc = match toml.get("javadoc") {
@@ -184,7 +193,6 @@ impl Configuration {
             name,
             sources,
             dependencies,
-            shaded,
             includes,
             targets,
             javadoc,
@@ -201,12 +209,8 @@ impl Configuration {
         self.sources.as_ref()
     }
 
-    pub fn dependencies(&self) -> Option<&Vec<String>> {
+    pub fn dependencies(&self) -> Option<&Vec<DependencyReference>> {
         self.dependencies.as_ref()
-    }
-
-    pub fn shaded(&self) -> Option<&Vec<String>> {
-        self.shaded.as_ref()
     }
 
     pub fn includes(&self) -> Option<&Vec<String>> {
@@ -276,12 +280,18 @@ impl Configuration {
         }
     }
 
-    pub fn inherit_from(&mut self, configuration: &Configuration) {
+    pub fn inherit_from(&mut self, configuration: &Configuration) -> Result<(), String> {
         self.sources = inherit_vec(self.sources.as_mut(), configuration.sources.as_ref());
         self.dependencies = inherit_vec(
             self.dependencies.as_mut(),
             configuration.dependencies.as_ref(),
         );
+
+        // Check for duplicate dependencies
+        if let Some(refs) = self.dependencies() {
+            validate_unique_dependencies(&self.name, refs)?
+        }
+
         self.includes = inherit_vec(self.includes.as_mut(), configuration.includes.as_ref());
         self.targets = inherit_vec(self.targets.as_mut(), configuration.targets.as_ref());
         match (self.javadoc.as_mut(), configuration.javadoc.as_ref()) {
@@ -307,6 +317,8 @@ impl Configuration {
                 self.environment.insert(k.clone(), v.clone());
             }
         }
+
+        Ok(())
     }
 
     pub fn print_info(&self) {
@@ -320,10 +332,7 @@ impl Configuration {
         }
 
         if let Some(d) = &self.dependencies {
-            println!(
-                "│\tDependencies     {}",
-                toml_utils::string_vec_to_string(d)
-            )
+            println!("│\tDependencies     {}", dependency_references_to_string(d))
         }
 
         if let Some(i) = &self.includes {
@@ -426,11 +435,143 @@ fn read_optional_string_array_for_configuration(
         .map_err(|error| contextual_configuration_error(configuration_name, key, error))
 }
 
+fn read_optional_dependency_array_for_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<Option<Vec<DependencyReference>>, String> {
+    let mut references = Vec::new();
+
+    let Some(value) = toml.get(key) else {
+        return Ok(None);
+    };
+
+    let Some(array) = value.as_array() else {
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}].{key}: expected an array of dependency names or reference tables, found {}.\nFix: use `dependencies = [ \"dependency-name\" ]` or `dependencies = [ {{ name = \"dependency-name\", scope = \"compile\" }} ]`.",
+            value.type_str()
+        ));
+    };
+
+    for (index, value) in array.iter().enumerate() {
+        if let Some(name) = value.as_str() {
+            references.push(DependencyReference::new(
+                String::from(name),
+                DependencyScope::Compile,
+                None,
+            ));
+            continue;
+        }
+
+        if let Some(table) = value.as_table() {
+            references.push(read_table_as_dependency_reference(
+                configuration_name,
+                index,
+                table,
+            )?);
+            continue;
+        }
+
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}].{key}[{index}]: expected a dependency name string or an inline table, found {}.\nFix: use `\"dependency-name\"` or `{{ name = \"dependency-name\", scope = \"compile\" }}`.",
+            value.type_str()
+        ));
+    }
+
+    Ok(Some(references))
+}
+
+fn read_table_as_dependency_reference(
+    configuration_name: &str,
+    index: usize,
+    toml: &Table,
+) -> Result<DependencyReference, String> {
+    // Validate present entries
+    for key in toml.keys() {
+        if !matches!(key.as_str(), "name" | "scope" | "package") {
+            return Err(contextual_dependency_reference_error(
+                configuration_name,
+                index,
+                key,
+                format!(
+                    "Unknown dependency reference key `{key}`.\nFix: use only `name`, `scope`, and `package`, or remove the unrecognized key."
+                ),
+            ));
+        }
+    }
+
+    let name = read_string("name", toml).map_err(|error| {
+        contextual_dependency_reference_error(configuration_name, index, "name", error)
+    })?;
+
+    let scope: DependencyScope = read_optional_string("scope", toml)
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "scope", error)
+        })?
+        .unwrap_or(String::from("compile"))
+        .try_into()
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "scope", error)
+        })?;
+
+    let packaging: Option<PackagingType> = read_optional_string("package", toml)
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "package", error)
+        })?
+        .map(|p| p.try_into())
+        .transpose()
+        .map_err(|error| {
+            contextual_dependency_reference_error(configuration_name, index, "package", error)
+        })?;
+
+    // Check for incompatible scope + packaging combinations
+    if matches!(packaging, Some(PackagingType::Shade))
+        && matches!(scope, DependencyScope::Provided | DependencyScope::Test)
+    {
+        return Err(contextual_dependency_reference_error(
+            configuration_name,
+            index,
+            "package",
+            String::from(
+                "Shaded packaging type is incompatible with provided/test scope.\nFix: remove `package = \"shade\"` or change scope to `compile` or `runtime`.",
+            ),
+        ));
+    }
+
+    Ok(DependencyReference::new(name, scope, packaging))
+}
+
 fn contextual_configuration_error(configuration_name: &str, key: &str, error: String) -> String {
     format!(
         "Invalid [configuration.{configuration_name}].{key}: {}",
         error
     )
+}
+
+fn contextual_dependency_reference_error(
+    configuration_name: &str,
+    index: usize,
+    key: &str,
+    error: String,
+) -> String {
+    format!("Invalid [configuration.{configuration_name}].dependencies[{index}].{key}: {error}")
+}
+
+fn dependency_references_to_string(references: &[DependencyReference]) -> String {
+    references
+        .iter()
+        .map(|reference| {
+            format!(
+                "{} ({}{})",
+                reference.name(),
+                reference.scope(),
+                reference
+                    .packaging()
+                    .map_or_else(String::new, |p| format!("/{p}"))
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn read_optional_javadoc_string(
@@ -469,6 +610,27 @@ fn inherit_vec<T: Clone + Eq>(
     }
 }
 
+fn validate_unique_dependencies(
+    configuration_name: &str,
+    references: &[DependencyReference],
+) -> Result<(), String> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+
+    for (index, reference) in references.iter().enumerate() {
+        if let Some(first_index) = seen.get(reference.name()) {
+            return Err(format!(
+                "Invalid [configuration.{configuration_name}].dependencies[{index}]: dependency `{}` is already referenced at dependencies[{first_index}].\nFix: keep one reference for `{}` and put the intended `scope` and `package` on that entry.",
+                reference.name(),
+                reference.name(),
+            ));
+        }
+
+        seen.insert(reference.name(), index);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,6 +639,15 @@ mod tests {
 
     fn table(toml: &str) -> Table {
         toml.parse::<Table>().unwrap()
+    }
+
+    fn dependency_names(configuration: &Configuration) -> Vec<&str> {
+        configuration
+            .dependencies()
+            .unwrap()
+            .iter()
+            .map(DependencyReference::name)
+            .collect()
     }
 
     #[test]
@@ -520,8 +691,10 @@ mod tests {
             &table(
                 r#"
                 sources = "src/"
-                dependencies = [ "dep-a", "dep-b" ]
-                shaded = [ "dep-b" ]
+                dependencies = [
+                    "dep-a",
+                    { name = "dep-b", scope = "runtime", package = "shade" },
+                ]
                 includes = [ "plugin.yml" ]
                 targets = [ "target/demo.jar" ]
                 entry = "com.example.Main"
@@ -544,14 +717,16 @@ mod tests {
             configuration.sources().unwrap(),
             &vec![String::from("src/")]
         );
+        assert_eq!(dependency_names(&configuration), vec!["dep-a", "dep-b"]);
         assert_eq!(
-            configuration.dependencies().unwrap(),
-            &vec![String::from("dep-a"), String::from("dep-b")]
+            configuration.dependencies().unwrap()[0].scope(),
+            DependencyScope::Compile
         );
         assert_eq!(
-            configuration.shaded().unwrap(),
-            &vec![String::from("dep-b")]
+            configuration.dependencies().unwrap()[1].scope(),
+            DependencyScope::Runtime
         );
+        assert!(configuration.dependencies().unwrap()[1].is_shaded());
         assert_eq!(
             configuration.includes().unwrap(),
             &vec![String::from("plugin.yml")]
@@ -697,16 +872,13 @@ mod tests {
         )
         .unwrap();
 
-        child.inherit_from(&parent);
+        child.inherit_from(&parent).unwrap();
 
         assert_eq!(
             child.sources().unwrap(),
             &vec![String::from("src/main/"), String::from("src/child/")]
         );
-        assert_eq!(
-            child.dependencies().unwrap(),
-            &vec![String::from("dep-b"), String::from("dep-a")]
-        );
+        assert_eq!(dependency_names(&child), vec!["dep-b", "dep-a"]);
         assert_eq!(child.includes().unwrap(), &vec![String::from("plugin.yml")]);
         assert_eq!(
             child.targets().unwrap(),
@@ -760,6 +932,94 @@ mod tests {
 
         assert!(error.contains("Invalid [configuration.main].sources"));
         assert!(error.contains("sources = [ \"src/\" ]"));
+    }
+
+    #[test]
+    fn rejects_removed_shaded_configuration() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [ "dep-a" ]
+                shaded = [ "dep-a" ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected removed shaded field to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].shaded"));
+        assert!(error.contains("package = \"shade\""));
+    }
+
+    #[test]
+    fn rejects_unknown_dependency_reference_keys_with_precise_path() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [
+                    { name = "dep-a", scpoe = "runtime" },
+                ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected unknown dependency reference key to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[0].scpoe"));
+        assert!(error.contains("use only `name`, `scope`, and `package`"));
+    }
+
+    #[test]
+    fn rejects_duplicate_dependency_references_by_name() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [
+                    "dep-a",
+                    { name = "dep-a", scope = "runtime", package = "shade" },
+                ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected duplicate dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[1]"));
+        assert!(error.contains("dependency `dep-a` is already referenced at dependencies[0]"));
+    }
+
+    #[test]
+    fn rejects_shaded_provided_dependency_reference() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [
+                    { name = "dep-a", scope = "provided", package = "shade" },
+                ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected incompatible dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[0].package"));
+        assert!(error.contains("incompatible with provided/test scope"));
     }
 
     #[test]

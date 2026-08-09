@@ -220,14 +220,18 @@ fn dependency_javadoc_links(project: &Project, configuration: &Configuration) ->
     };
 
     let mut links = Vec::new();
-    for dependency_name in dependencies {
+    for reference in dependencies {
         let Some(javadoc) = project
             .dependencies()
-            .get(dependency_name)
+            .get(reference.name())
             .and_then(|dependency| dependency.javadoc())
         else {
             continue;
         };
+
+        if !reference.scope().is_on_compile_classpath() {
+            continue;
+        }
 
         if !links.contains(javadoc) {
             links.push(javadoc.clone());
@@ -414,6 +418,48 @@ mod tests {
         assert_eq!(
             dependency_javadoc_links(&project, configuration),
             vec![String::from("https://example.com/docs/")]
+        );
+    }
+
+    #[test]
+    fn dependency_javadoc_links_uses_compile_classpath_scopes() {
+        let temp = TempDir::new("javadoc-dependency-link-scopes");
+        let project_file = temp.path().join("project.toml");
+        fs::write(
+            &project_file,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+
+            [dependencies.archive]
+            compile_dep = { path = "lib/compile.jar", javadoc = "https://example.com/compile/" }
+            provided_dep = { path = "lib/provided.jar", javadoc = "https://example.com/provided/" }
+            runtime_dep = { path = "lib/runtime.jar", javadoc = "https://example.com/runtime/" }
+            test_dep = { path = "lib/test.jar", javadoc = "https://example.com/test/" }
+
+            [configuration.docs]
+            sources = [ "src/" ]
+            dependencies = [
+                { name = "compile_dep", scope = "compile" },
+                { name = "provided_dep", scope = "provided" },
+                { name = "runtime_dep", scope = "runtime" },
+                { name = "test_dep", scope = "test" },
+            ]
+            "#,
+        )
+        .unwrap();
+
+        let project = Project::from(Some(project_file.to_string_lossy().to_string())).unwrap();
+        let configuration = project.info().configurations().get("docs").unwrap();
+
+        assert_eq!(
+            dependency_javadoc_links(&project, configuration),
+            vec![
+                String::from("https://example.com/compile/"),
+                String::from("https://example.com/provided/"),
+            ]
         );
     }
 }

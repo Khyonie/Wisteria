@@ -8,6 +8,7 @@ pub struct StartupFlags {
     pub minimal: bool,
     pub use_project: Option<String>,
     pub no_refresh: bool,
+    pub no_git: bool,
     pub passed_args: Vec<String>,
 }
 
@@ -37,6 +38,7 @@ pub fn load_arguments(args: &mut Vec<String>) -> StartupFlags {
             match arg.split_once("--").unwrap().1 {
                 "minimal" => flags.minimal = true,
                 "norefresh" => flags.no_refresh = true,
+                "nogit" => flags.no_git = true,
                 "project" => match args_iter.next() {
                     Some(a) => flags.use_project = Some(a.clone()),
                     None => {

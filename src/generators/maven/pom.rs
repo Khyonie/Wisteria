@@ -74,8 +74,8 @@ pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<
         return Ok(String::from_utf8(bytes).unwrap());
     };
 
-    for dependency_name in configuration_dependencies {
-        let Some(dependency) = project.dependencies().get(dependency_name) else {
+    for dependency_reference in configuration_dependencies {
+        let Some(dependency) = project.dependencies().get(dependency_reference.name()) else {
             continue;
         };
 
@@ -111,6 +111,10 @@ pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<
                     write_text_element(&mut writer, "classifier", classifier)?;
                 }
 
+                if let Some(scope) = dependency_reference.scope().maven_scope() {
+                    write_text_element(&mut writer, "scope", scope)?;
+                }
+
                 writer
                     .write(XmlEvent::end_element())
                     .map_err(|e| e.to_string())?;
@@ -139,9 +143,9 @@ fn collect_repositories(
         return repositories;
     };
 
-    for dependency_name in configuration_dependencies {
+    for dependency_reference in configuration_dependencies {
         let Some(Dependency::FetchFromMaven { url, .. }) =
-            project.dependencies().get(dependency_name)
+            project.dependencies().get(dependency_reference.name())
         else {
             continue;
         };

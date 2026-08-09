@@ -1,4 +1,5 @@
 pub mod eclipse;
+pub mod git;
 pub mod maven;
 pub mod metadata;
 pub mod wisteria_project;

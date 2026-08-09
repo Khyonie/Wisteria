@@ -119,7 +119,7 @@ impl Project {
                             };
 
                             let mut inheritor: Configuration = configuration.clone();
-                            inheritor.inherit_from(target);
+                            inheritor.inherit_from(target)?;
                             inheritor.apply_implicit(flags.clone());
                             updated_configurations.insert(config_name.clone(), inheritor);
                         }
@@ -142,6 +142,7 @@ impl Project {
         };
 
         let dependencies: HashMap<String, Dependency> = load_dependency_map(dependencies_map)?;
+        validate_configuration_dependency_references(&info.configurations, &dependencies)?;
 
         Ok(Project { info, dependencies })
     }
@@ -274,6 +275,35 @@ fn configuration_names(configurations: &HashMap<String, Configuration>) -> Strin
     let mut names: Vec<&str> = configurations.keys().map(String::as_str).collect();
     names.sort_unstable();
     names.join(", ")
+}
+
+fn validate_configuration_dependency_references(
+    configurations: &HashMap<String, Configuration>,
+    dependencies: &HashMap<String, Dependency>,
+) -> Result<(), String> {
+    let mut configuration_names: Vec<&str> = configurations.keys().map(String::as_str).collect();
+    configuration_names.sort_unstable();
+
+    for configuration_name in configuration_names {
+        let configuration = configurations.get(configuration_name).unwrap();
+        let Some(references) = configuration.dependencies() else {
+            continue;
+        };
+
+        for (index, reference) in references.iter().enumerate() {
+            if dependencies.contains_key(reference.name()) {
+                continue;
+            }
+
+            return Err(format!(
+                "Invalid [configuration.{configuration_name}].dependencies[{index}]: dependency `{}` is not declared.\nFix: add `{}` under a dependency source table such as `[dependencies.maven]`, `[dependencies.archive]`, `[dependencies.github]`, `[dependencies.folder]`, or `[dependencies.url]`, or remove/rename this reference.",
+                reference.name(),
+                reference.name()
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -439,6 +469,10 @@ mod tests {
             version = "1.0.0"
             description = "Demo project"
 
+            [dependencies.archive]
+            base-dep = { path = "lib/base-dep.jar" }
+            child-dep = { path = "lib/child-dep.jar" }
+
             [configuration.base]
             sources = [ "src/main/" ]
             dependencies = [ "base-dep" ]
@@ -459,14 +493,79 @@ mod tests {
             &vec![String::from("src/child/"), String::from("src/main/")]
         );
         assert_eq!(
-            child.dependencies().unwrap(),
-            &vec![String::from("child-dep"), String::from("base-dep")]
+            child
+                .dependencies()
+                .unwrap()
+                .iter()
+                .map(|reference| reference.name())
+                .collect::<Vec<_>>(),
+            vec!["child-dep", "base-dep"]
         );
         assert_eq!(
             child.targets().unwrap(),
             &vec![String::from("target/base.jar")]
         );
         assert!(child.tasks().contains_key("build"));
+    }
+
+    #[test]
+    fn rejects_undeclared_dependency_reference() {
+        let temp = TempDir::new("project-undeclared-dependency-reference");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [dependencies.archive]
+            declared = { path = "lib/declared.jar" }
+
+            [configuration.main]
+            dependencies = [ "declared", "missing" ]
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected undeclared dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[1]"));
+        assert!(error.contains("dependency `missing` is not declared"));
+        assert!(error.contains("add `missing` under a dependency source table"));
+    }
+
+    #[test]
+    fn rejects_duplicate_dependency_references_after_inheritance() {
+        let temp = TempDir::new("project-inherit-duplicate-dependencies");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [configuration.base]
+            dependencies = [ "shared-dep" ]
+
+            [configuration.child]
+            inherit = "base"
+            dependencies = [
+                { name = "shared-dep", scope = "runtime", package = "shade" },
+            ]
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected inherited duplicate dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.child].dependencies[1]"));
+        assert!(error.contains("dependency `shared-dep` is already referenced at dependencies[0]"));
     }
 
     #[test]
