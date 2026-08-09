@@ -8,8 +8,7 @@ use crate::workspace::files;
 pub fn shade_jars(shaded_jars: &[PathBuf]) -> Result<(), String> {
     // Clean shaded folder
     let shaded_jar_path = PathBuf::from(consts::SHADED_OUT_PATH);
-    if shaded_jar_path.exists()
-    {
+    if shaded_jar_path.exists() {
         fs::remove_dir_all(&shaded_jar_path)
             .map_err(|e| format!("Failed to remove shaded work folder: {e}"))?
     }

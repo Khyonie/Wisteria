@@ -82,6 +82,11 @@ impl Configuration {
                 "Invalid [configuration.{name}].shaded: `shaded` was removed.\nFix: move each shaded dependency into `dependencies` as `{{ name = \"dependency-name\", package = \"shade\" }}`."
             ));
         }
+
+        if let Some(refs) = dependencies.as_ref() {
+            validate_unique_dependencies(&name, refs)?
+        }
+
         let includes = read_optional_string_array_for_configuration(&name, "includes", toml)?;
         let targets = read_optional_string_array_for_configuration(&name, "targets", toml)?;
         let javadoc = match toml.get("javadoc") {
@@ -275,12 +280,18 @@ impl Configuration {
         }
     }
 
-    pub fn inherit_from(&mut self, configuration: &Configuration) {
+    pub fn inherit_from(&mut self, configuration: &Configuration) -> Result<(), String> {
         self.sources = inherit_vec(self.sources.as_mut(), configuration.sources.as_ref());
         self.dependencies = inherit_vec(
             self.dependencies.as_mut(),
             configuration.dependencies.as_ref(),
         );
+
+        // Check for duplicate dependencies
+        if let Some(refs) = self.dependencies() {
+            validate_unique_dependencies(&self.name, refs)?
+        }
+
         self.includes = inherit_vec(self.includes.as_mut(), configuration.includes.as_ref());
         self.targets = inherit_vec(self.targets.as_mut(), configuration.targets.as_ref());
         match (self.javadoc.as_mut(), configuration.javadoc.as_ref()) {
@@ -306,6 +317,8 @@ impl Configuration {
                 self.environment.insert(k.clone(), v.clone());
             }
         }
+
+        Ok(())
     }
 
     pub fn print_info(&self) {
@@ -597,6 +610,27 @@ fn inherit_vec<T: Clone + Eq>(
     }
 }
 
+fn validate_unique_dependencies(
+    configuration_name: &str,
+    references: &[DependencyReference],
+) -> Result<(), String> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+
+    for (index, reference) in references.iter().enumerate() {
+        if let Some(first_index) = seen.get(reference.name()) {
+            return Err(format!(
+                "Invalid [configuration.{configuration_name}].dependencies[{index}]: dependency `{}` is already referenced at dependencies[{first_index}].\nFix: keep one reference for `{}` and put the intended `scope` and `package` on that entry.",
+                reference.name(),
+                reference.name(),
+            ));
+        }
+
+        seen.insert(reference.name(), index);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -838,7 +872,7 @@ mod tests {
         )
         .unwrap();
 
-        child.inherit_from(&parent);
+        child.inherit_from(&parent).unwrap();
 
         assert_eq!(
             child.sources().unwrap(),
@@ -941,6 +975,29 @@ mod tests {
 
         assert!(error.contains("Invalid [configuration.main].dependencies[0].scpoe"));
         assert!(error.contains("use only `name`, `scope`, and `package`"));
+    }
+
+    #[test]
+    fn rejects_duplicate_dependency_references_by_name() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                dependencies = [
+                    "dep-a",
+                    { name = "dep-a", scope = "runtime", package = "shade" },
+                ]
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected duplicate dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main].dependencies[1]"));
+        assert!(error.contains("dependency `dep-a` is already referenced at dependencies[0]"));
     }
 
     #[test]

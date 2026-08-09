@@ -119,7 +119,7 @@ impl Project {
                             };
 
                             let mut inheritor: Configuration = configuration.clone();
-                            inheritor.inherit_from(target);
+                            inheritor.inherit_from(target)?;
                             inheritor.apply_implicit(flags.clone());
                             updated_configurations.insert(config_name.clone(), inheritor);
                         }
@@ -472,6 +472,37 @@ mod tests {
             &vec![String::from("target/base.jar")]
         );
         assert!(child.tasks().contains_key("build"));
+    }
+
+    #[test]
+    fn rejects_duplicate_dependency_references_after_inheritance() {
+        let temp = TempDir::new("project-inherit-duplicate-dependencies");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [configuration.base]
+            dependencies = [ "shared-dep" ]
+
+            [configuration.child]
+            inherit = "base"
+            dependencies = [
+                { name = "shared-dep", scope = "runtime", package = "shade" },
+            ]
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected inherited duplicate dependency reference to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.child].dependencies[1]"));
+        assert!(error.contains("dependency `shared-dep` is already referenced at dependencies[0]"));
     }
 
     #[test]
