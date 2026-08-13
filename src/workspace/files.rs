@@ -1,4 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::{Path, PathBuf},
+};
+
+use sha2::{Digest, Sha256};
 
 pub fn collect_files_with_extension(path: &Path, extension: &str) -> Result<Vec<PathBuf>, String> {
     let mut files: Vec<PathBuf> = Vec::new();
@@ -52,6 +58,34 @@ fn collect_files_recursive(
     }
 
     Ok(())
+}
+
+const BUFFER_SIZE: usize = 0x2000; // 8kb file buffer
+pub fn generate_sha2_for_file(path: &Path) -> Result<String, String> {
+    let file = File::open(path).map_err(|e| {
+        format!(
+            "Failed to generate hash for file {}: {e}",
+            path.to_string_lossy()
+        )
+    })?;
+
+    let mut reader = BufReader::new(file);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; BUFFER_SIZE]; // 8kb buffer
+
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|e| format!("Failed to read file while hashing it: {e}"))?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+
+    // 4. Finalize the hash and convert it to a hex string
+    let result = hasher.finalize();
+    Ok(hex::encode(result))
 }
 
 #[cfg(test)]

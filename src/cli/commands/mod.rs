@@ -2,21 +2,25 @@ use std::{collections::HashMap, process::exit};
 
 use regex::Regex;
 
+use crate::dependency::resolver::{ResolveContext, ResolvedDependency};
 use crate::dependency::{Dependency, UpdateContext};
-use crate::model::{Configuration, Project};
-use crate::util::consts;
+use crate::model::{Configuration, Lockfile, Project};
 
 pub mod clean;
 pub mod create;
+pub mod dependencies;
+pub mod fetch;
 pub mod info;
 pub mod migrate;
 pub mod refresh;
 pub mod switch;
+pub mod sync;
 pub mod task;
 pub mod update;
+pub mod verify;
 
 pub(crate) fn print_header() {
-    println!("Wisteria v{}", consts::VERSION);
+    println!("Wisteria v{}", env!("CARGO_PKG_VERSION"));
     println!("Copyright © 2026 Hailey-Jane \"Khyonie\" Garrett <http://www.khyonieheart.coffee/>");
 }
 
@@ -73,13 +77,19 @@ pub(crate) fn configuration_or_exit<'a>(
     }
 }
 
+pub(crate) struct DependencyResolutionResult {
+    pub(crate) resolved: Vec<ResolvedDependency>,
+    pub(crate) failed: Vec<(String, String)>,
+}
+
 pub(crate) fn update_dependencies_with_context(
     targets: &[String],
     dependencies: &HashMap<String, Dependency>,
     environment: &HashMap<String, String>,
     regexes: &HashMap<&str, Regex>,
     context: UpdateContext,
-) -> Vec<(String, String)> {
+    lockfile: Option<&Lockfile>,
+) -> DependencyResolutionResult {
     let mut width: usize = usize::MIN;
     for name in targets.iter() {
         width = usize::max(name.len(), width);
@@ -87,20 +97,35 @@ pub(crate) fn update_dependencies_with_context(
 
     width += 5;
 
+    let mut resolved_dependencies: Vec<ResolvedDependency> = Vec::new();
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
+    let (action, failure_action, completes_progress_line) = match context {
+        UpdateContext::ResolveOnly => ("Resolving", "resolve", true),
+        _ => ("Updating", "download", false),
+    };
     let size = targets.len();
     for (index, target) in targets.iter().enumerate() {
         match dependencies.get_key_value(target) {
             Some((name, dep)) => {
                 print!(
-                    "({}/{size}) Updating {:width$}",
+                    "({}/{size}) {action} {:width$}",
                     index + 1,
                     format!("{name} ... ")
                 );
-                let _ = match dep.resolve(name, environment, regexes, context) {
-                    Ok(p) => p,
+                match dep.resolve(
+                    name,
+                    environment,
+                    regexes,
+                    ResolveContext::for_dependency(context, lockfile, name),
+                ) {
+                    Ok(resolved) => {
+                        if completes_progress_line {
+                            println!("Done");
+                        }
+                        resolved_dependencies.push(resolved)
+                    }
                     Err(e) => {
-                        println!("Could not download {name}: {e}");
+                        println!("Could not {failure_action} {name}: {e}");
                         failed_downloads.push((name.clone(), e));
                         continue;
                     }
@@ -112,5 +137,8 @@ pub(crate) fn update_dependencies_with_context(
         }
     }
 
-    failed_downloads
+    DependencyResolutionResult {
+        resolved: resolved_dependencies,
+        failed: failed_downloads,
+    }
 }

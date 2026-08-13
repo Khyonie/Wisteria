@@ -21,6 +21,9 @@ pub fn run() {
 
     match command.as_str() {
         "refresh" => commands::refresh::trigger_refresh(project),
+        "sync" => commands::sync::trigger_sync(project, &args),
+        "fetch" => commands::fetch::trigger_fetch(project, &args),
+        "verify" => commands::verify::trigger_verify(project, &args),
         "update" if args.len() == 2 => {
             println!(
                 "Not enough arguments. Expected at least one argument, but none were supplied."

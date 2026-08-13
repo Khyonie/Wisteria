@@ -1,4 +1,4 @@
-use crate::dependency::UpdatePolicy;
+use crate::{dependency::UpdatePolicy, model::LockfileArtifact};
 
 #[derive(Clone)]
 pub enum Dependency {
@@ -73,6 +73,46 @@ impl Dependency {
             Dependency::BuildFromScript { javadoc, .. } => javadoc.as_ref(),
             _ => None,
         }
+    }
+
+    pub fn lockfile_source(&self) -> Option<&'static str> {
+        match self {
+            Dependency::FetchFromUrl { .. } => Some("url"),
+            Dependency::FetchFromMaven { .. } => Some("maven"),
+            Dependency::FetchFromGithub { .. } => Some("github"),
+            _ => None,
+        }
+    }
+
+    pub fn matches_lockfile_artifact(&self, artifact: &LockfileArtifact) -> bool {
+        let Some(source) = self.lockfile_source() else {
+            return false;
+        };
+
+        if artifact.source() != source {
+            return false;
+        }
+
+        match self {
+            Dependency::FetchFromUrl { url, .. } => artifact.fetch_url() == url,
+            Dependency::FetchFromMaven { version, .. } => {
+                configured_version_matches_lockfile(version.as_deref(), artifact.version())
+            }
+            Dependency::FetchFromGithub { tag, .. } => {
+                configured_version_matches_lockfile(tag.as_deref(), artifact.version())
+            }
+            _ => false,
+        }
+    }
+}
+
+fn configured_version_matches_lockfile(
+    configured_version: Option<&str>,
+    locked_version: Option<&str>,
+) -> bool {
+    match configured_version {
+        Some("latest" | "release") | None => locked_version.is_some(),
+        Some(version) => locked_version == Some(version),
     }
 }
 

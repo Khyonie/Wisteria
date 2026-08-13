@@ -17,10 +17,74 @@ pub struct Lockfile {
 pub struct LockfileArtifact {
     name: String,
     source: String,
-    version: String,
+    version: Option<String>,
     fetch_url: String,
     cache_path: String,
     hash: String,
+}
+
+impl LockfileArtifact {
+    pub fn new(
+        name: String,
+        source: String,
+        version: Option<String>,
+        fetch_url: String,
+        cache_path: String,
+        hash: String,
+    ) -> Self {
+        Self {
+            name,
+            source,
+            version,
+            fetch_url,
+            cache_path,
+            hash,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    pub fn fetch_url(&self) -> &str {
+        &self.fetch_url
+    }
+
+    pub fn cache_path(&self) -> &str {
+        &self.cache_path
+    }
+
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+}
+
+impl Lockfile {
+    pub fn artifacts(&self) -> &[LockfileArtifact] {
+        &self.artifact
+    }
+
+    pub fn artifact_for_dependency(&self, name: &str) -> Option<&LockfileArtifact> {
+        self.artifact
+            .iter()
+            .find(|artifact| artifact.name() == name)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_artifacts_for_test(artifact: Vec<LockfileArtifact>) -> Self {
+        Self {
+            schema: LOCKFILE_SCHEMA_VERSION,
+            artifact,
+        }
+    }
 }
 
 /// Attempts to read wisteria.lock in the current directory. If the file does not exist, Ok(None)
@@ -48,7 +112,11 @@ pub fn try_read_lockfile() -> Result<Option<Lockfile>, String> {
 /// Takes resolved dependencies and generates a TOML-serialized lockfile for it.
 /// Only dependencies which can be put into a lockfile will be stored.
 pub fn lockable_artifacts_to_toml(dependencies: &[ResolvedDependency]) -> Result<String, String> {
-    let locked_artifacts: Vec<LockfileArtifact> = dependencies
+    lockfile_artifacts_to_toml(lockable_artifacts(dependencies))
+}
+
+pub fn lockable_artifacts(dependencies: &[ResolvedDependency]) -> Vec<LockfileArtifact> {
+    dependencies
         .iter()
         .flat_map(|d| {
             d.artifacts
@@ -56,8 +124,13 @@ pub fn lockable_artifacts_to_toml(dependencies: &[ResolvedDependency]) -> Result
                 .filter_map(|path| path.lock.as_ref())
                 .cloned()
         })
-        .collect();
+        .collect()
+}
 
+pub fn lockfile_artifacts_to_toml(
+    mut locked_artifacts: Vec<LockfileArtifact>,
+) -> Result<String, String> {
+    sort_lockfile_artifacts(&mut locked_artifacts);
     let lockfile = Lockfile {
         schema: LOCKFILE_SCHEMA_VERSION,
         artifact: locked_artifacts,
@@ -69,6 +142,17 @@ pub fn lockable_artifacts_to_toml(dependencies: &[ResolvedDependency]) -> Result
     verify_lockfile(&toml, &lockfile)?;
 
     Ok(toml)
+}
+
+fn sort_lockfile_artifacts(artifacts: &mut [LockfileArtifact]) {
+    artifacts.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.source.cmp(&right.source))
+            .then_with(|| left.version.cmp(&right.version))
+            .then_with(|| left.fetch_url.cmp(&right.fetch_url))
+            .then_with(|| left.cache_path.cmp(&right.cache_path))
+    });
 }
 
 /// Attempts to write a lockfile TOML string to wisteria.lock.
@@ -116,16 +200,16 @@ fn verify_lockfile(toml: &str, lockfile: &Lockfile) -> Result<(), String> {
 fn read_schema(lockfile: &Value) -> Result<i64, String> {
     let Some(schema) = lockfile.get("schema") else {
         return Err(format!(
-            "Missing wisteria.lock schema.\nFix: delete `{}` and run `wisteria update` again, or restore it from source control.",
-            consts::LOCKFILE
+            "Missing wisteria.lock schema.\n{}",
+            regenerate_lockfile_fix()
         ));
     };
 
     schema.as_integer().ok_or_else(|| {
         format!(
-            "Invalid wisteria.lock schema; expected an integer, found {}.\nFix: delete `{}` and run `wisteria update` again, or restore it from source control.",
+            "Invalid wisteria.lock schema; expected an integer, found {}.\n{}",
             schema.type_str(),
-            consts::LOCKFILE
+            regenerate_lockfile_fix()
         )
     })
 }
@@ -136,18 +220,35 @@ fn validate_schema(schema: i64) -> Result<(), String> {
 
     match schema {
         ..=0 => Err(format!(
-            "Invalid wisteria.lock schema {schema}; schema versions start at 1.\nFix: delete `{}` and run `wisteria update` again, or restore it from source control.",
-            consts::LOCKFILE
+            "Invalid wisteria.lock schema {schema}; schema versions start at 1.\n{}",
+            regenerate_lockfile_fix()
         )),
         schema if schema == current_schema => Ok(()),
         schema if schema < current_schema => Err(format!(
-            "Unsupported wisteria.lock schema {schema}; this Wisteria version does not know how to migrate it to schema {LOCKFILE_SCHEMA_VERSION}.\nFix: delete `{}` and run `wisteria update` again, or restore it from source control.",
-            consts::LOCKFILE
+            "Unsupported wisteria.lock schema {schema}; this Wisteria version does not know how to migrate it to schema {LOCKFILE_SCHEMA_VERSION}.\n{}",
+            regenerate_lockfile_fix()
         )),
         schema => Err(format!(
-            "Unsupported wisteria.lock schema {schema}; this Wisteria version only supports schema {LOCKFILE_SCHEMA_VERSION}.\nFix: update Wisteria, or restore a lockfile generated by a compatible version.",
+            "Unsupported wisteria.lock schema {schema}; this Wisteria version only supports schema {LOCKFILE_SCHEMA_VERSION}.\n{}",
+            newer_schema_fix(schema)
         )),
     }
+}
+
+fn regenerate_lockfile_fix() -> String {
+    format!(
+        "Fix: restore a valid `{}` from source control. To regenerate it, delete `{}` and run `wisteria sync` if the intended artifacts are already cached, or `wisteria update all` to resolve and download them.",
+        consts::LOCKFILE,
+        consts::LOCKFILE
+    )
+}
+
+fn newer_schema_fix(schema: i64) -> String {
+    format!(
+        "Fix: update Wisteria to a version that supports lockfile schema {schema}, or restore a `{}` generated by this Wisteria version. Only delete `{}` and run `wisteria update all` if you intentionally want to discard the newer lockfile data.",
+        consts::LOCKFILE,
+        consts::LOCKFILE
+    )
 }
 
 #[cfg(test)]
@@ -166,7 +267,7 @@ mod tests {
         LockfileArtifact {
             name: String::from("gson"),
             source: String::from("maven"),
-            version: String::from("2.14.0"),
+            version: Some(String::from("2.14.0")),
             fetch_url: String::from("https://example/gson.jar"),
             cache_path: String::from(".wisteria/cache/com.google.code.gson/gson.jar"),
             hash: String::from("foo"),
@@ -177,7 +278,7 @@ mod tests {
         LockfileArtifact {
             name: String::from("anenome"),
             source: String::from("github"),
-            version: String::from("2.0.0"),
+            version: Some(String::from("2.0.0")),
             fetch_url: String::from("https://github.com/Khyonie/Anenome.jar"),
             cache_path: String::from(".wisteria/cache/Khyonie/Anenome/Anenome.jar"),
             hash: String::from("bar"),
@@ -226,6 +327,20 @@ hash = "foo"
     }
 
     #[test]
+    fn artifact_for_dependency_returns_matching_lockfile_artifact() {
+        let lockfile = Lockfile {
+            schema: LOCKFILE_SCHEMA_VERSION,
+            artifact: vec![gson_artifact(), anenome_artifact()],
+        };
+
+        assert_eq!(
+            lockfile.artifact_for_dependency("anenome"),
+            Some(&anenome_artifact())
+        );
+        assert_eq!(lockfile.artifact_for_dependency("missing"), None);
+    }
+
+    #[test]
     fn read_lockfile_rejects_invalid_toml() {
         let temp = TempDir::new("lockfile-invalid");
 
@@ -260,7 +375,8 @@ hash = "foo"
             let error = try_read_lockfile().unwrap_err();
 
             assert!(error.contains("Missing wisteria.lock schema"));
-            assert!(error.contains("wisteria update"));
+            assert!(error.contains("wisteria sync"));
+            assert!(error.contains("wisteria update all"));
         });
     }
 
@@ -275,6 +391,7 @@ hash = "foo"
 
             assert!(error.contains("expected an integer"));
             assert!(error.contains("found string"));
+            assert!(error.contains("wisteria update all"));
         });
     }
 
@@ -289,6 +406,7 @@ hash = "foo"
 
             assert!(error.contains("Invalid wisteria.lock schema 0"));
             assert!(error.contains("schema versions start at 1"));
+            assert!(error.contains("wisteria update all"));
         });
     }
 
@@ -303,6 +421,7 @@ hash = "foo"
 
             assert!(error.contains("Unsupported wisteria.lock schema 2"));
             assert!(error.contains("update Wisteria"));
+            assert!(error.contains("intentionally want to discard"));
         });
     }
 
@@ -336,7 +455,7 @@ hash = "foo"
         let parsed: Lockfile = toml::from_str(&toml).unwrap();
 
         assert_eq!(parsed.schema, LOCKFILE_SCHEMA_VERSION);
-        assert_eq!(parsed.artifact, lockable_artifacts);
+        assert_eq!(parsed.artifact, vec![anenome_artifact(), gson_artifact()]);
         assert!(toml.contains("schema = 1"));
         assert!(toml.contains("[[artifact]]"));
     }

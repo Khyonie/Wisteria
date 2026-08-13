@@ -7,6 +7,7 @@ use crate::cli::commands::{
 };
 use crate::dependency::UpdateContext;
 use crate::generators::generate_metadata;
+use crate::model::lockfile::try_read_lockfile;
 use crate::model::{Configuration, Metadata, Project};
 use crate::util::consts;
 use crate::workspace::refresh::refresh;
@@ -44,17 +45,26 @@ pub fn trigger_switch(project: Result<Project, String>, args: &[String], flags: 
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
     if let Some(dependencies) = configuration.dependencies() {
+        let lockfile = match try_read_lockfile() {
+            Ok(lockfile) => lockfile,
+            Err(error) => {
+                println!("{error}");
+                exit(1)
+            }
+        };
         let dependency_names: Vec<String> = dependencies
             .iter()
             .map(|reference| reference.name().to_string())
             .collect();
-        failed_downloads = update_dependencies_with_context(
+        let result = update_dependencies_with_context(
             &dependency_names,
             project.dependencies(),
             configuration.environment(),
             &regexes,
             UpdateContext::SwitchConfiguration,
+            lockfile.as_ref(),
         );
+        failed_downloads = result.failed;
     }
 
     print!("Finishing up... ");
