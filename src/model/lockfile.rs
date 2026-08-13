@@ -100,28 +100,130 @@ fn verify_lockfile(toml: &str, lockfile: &Lockfile) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Lockfile, LockfileArtifact, lockfile::LOCKFILE_SCHEMA_VERSION};
+    use std::{fs, path::PathBuf};
+
+    use crate::{
+        dependency::resolver::{ResolvedArtifact, ResolvedDependency},
+        test_support::{TempDir, with_current_dir},
+        util::consts,
+    };
+
+    use super::*;
+
+    fn gson_artifact() -> LockfileArtifact {
+        LockfileArtifact {
+            name: String::from("gson"),
+            source: String::from("maven"),
+            version: String::from("2.14.0"),
+            fetch_url: String::from("https://example/gson.jar"),
+            cache_path: String::from(".wisteria/cache/com.google.code.gson/gson.jar"),
+            hash: String::from("foo"),
+        }
+    }
+
+    fn anenome_artifact() -> LockfileArtifact {
+        LockfileArtifact {
+            name: String::from("anenome"),
+            source: String::from("github"),
+            version: String::from("2.0.0"),
+            fetch_url: String::from("https://github.com/Khyonie/Anenome.jar"),
+            cache_path: String::from(".wisteria/cache/Khyonie/Anenome/Anenome.jar"),
+            hash: String::from("bar"),
+        }
+    }
+
+    #[test]
+    fn read_lockfile_returns_none_when_missing() {
+        let temp = TempDir::new("lockfile-missing");
+
+        with_current_dir(temp.path(), || {
+            let lockfile = read_lockfile().unwrap();
+
+            assert_eq!(lockfile, None);
+            assert!(!PathBuf::from(consts::LOCKFILE).exists());
+            assert!(!PathBuf::from(consts::LOCKFILE_TEMP).exists());
+        });
+    }
+
+    #[test]
+    fn read_lockfile_parses_existing_lockfile() {
+        let temp = TempDir::new("lockfile-read");
+
+        with_current_dir(temp.path(), || {
+            fs::write(
+                consts::LOCKFILE,
+                r#"
+schema = 1
+
+[[artifact]]
+name = "gson"
+source = "maven"
+version = "2.14.0"
+fetch_url = "https://example/gson.jar"
+cache_path = ".wisteria/cache/com.google.code.gson/gson.jar"
+hash = "foo"
+"#,
+            )
+            .unwrap();
+
+            let lockfile = read_lockfile().unwrap().unwrap();
+
+            assert_eq!(lockfile.schema, LOCKFILE_SCHEMA_VERSION);
+            assert_eq!(lockfile.artifact, vec![gson_artifact()]);
+        });
+    }
+
+    #[test]
+    fn read_lockfile_rejects_invalid_toml() {
+        let temp = TempDir::new("lockfile-invalid");
+
+        with_current_dir(temp.path(), || {
+            fs::write(consts::LOCKFILE, "schema = [").unwrap();
+
+            let error = read_lockfile().unwrap_err();
+
+            assert!(error.contains("Failed to parse lockfile"));
+        });
+    }
+
+    #[test]
+    fn lockable_artifacts_to_toml_serializes_schema_and_lockable_artifacts() {
+        let lockable_artifacts = vec![gson_artifact(), anenome_artifact()];
+        let dependencies = vec![
+            ResolvedDependency {
+                name: String::from("lockable"),
+                artifacts: vec![
+                    ResolvedArtifact {
+                        path: PathBuf::from(".wisteria/cache/gson.jar"),
+                        lock: Some(lockable_artifacts[0].clone()),
+                    },
+                    ResolvedArtifact {
+                        path: PathBuf::from("lib/local.jar"),
+                        lock: None,
+                    },
+                ],
+            },
+            ResolvedDependency {
+                name: String::from("also-lockable"),
+                artifacts: vec![ResolvedArtifact {
+                    path: PathBuf::from(".wisteria/cache/anenome.jar"),
+                    lock: Some(lockable_artifacts[1].clone()),
+                }],
+            },
+        ];
+
+        let toml = lockable_artifacts_to_toml(&dependencies).unwrap();
+        let parsed: Lockfile = toml::from_str(&toml).unwrap();
+
+        assert_eq!(parsed.schema, LOCKFILE_SCHEMA_VERSION);
+        assert_eq!(parsed.artifact, lockable_artifacts);
+        assert!(toml.contains("schema = 1"));
+        assert!(toml.contains("[[artifact]]"));
+    }
 
     #[test]
     fn lockfile_serialization_makes_round_trip() {
-        let lockable_artifacts = vec![
-            LockfileArtifact {
-                name: String::from("gson"),
-                source: String::from("maven"),
-                version: String::from("2.14.0"),
-                fetch_url: String::from("https://example/gson.jar"),
-                cache_path: String::from(".wisteria/cache/com.google.code.gson/gson.jar"),
-                hash: String::from("foo"),
-            },
-            LockfileArtifact {
-                name: String::from("anenome"),
-                source: String::from("github"),
-                version: String::from("2.0.0"),
-                fetch_url: String::from("https://github.com/Khyonie/Anenome.jar"),
-                cache_path: String::from(".wisteria/cache/Khyonie/Anenome/Anenome.jar"),
-                hash: String::from("bar"),
-            },
-        ];
+        let lockable_artifacts = vec![gson_artifact(), anenome_artifact()];
 
         let lockfile = Lockfile {
             schema: LOCKFILE_SCHEMA_VERSION,
@@ -132,5 +234,22 @@ mod tests {
         let parsed: Lockfile = toml::from_str(&toml).unwrap();
 
         assert_eq!(parsed.artifact, lockable_artifacts)
+    }
+
+    #[test]
+    fn write_lockfile_replaces_existing_lockfile_and_removes_temp_file() {
+        let temp = TempDir::new("lockfile-write");
+
+        with_current_dir(temp.path(), || {
+            fs::write(consts::LOCKFILE, "old lockfile").unwrap();
+
+            write_lockfile("schema = 1\n").unwrap();
+
+            assert_eq!(
+                fs::read_to_string(consts::LOCKFILE).unwrap(),
+                "schema = 1\n"
+            );
+            assert!(!PathBuf::from(consts::LOCKFILE_TEMP).exists());
+        });
     }
 }
