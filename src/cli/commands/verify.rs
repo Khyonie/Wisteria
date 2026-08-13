@@ -14,7 +14,7 @@ use crate::workspace::files;
 pub fn trigger_verify(project: Result<Project, String>, args: &[String]) {
     if args.len() > 2 {
         println!(
-            "`wisteria verify` does not accept dependency names yet.\nFix: run `wisteria verify` to check the whole project."
+            "`wisteria verify` checks the whole project and does not accept dependency names.\nFix: run `wisteria verify` without additional arguments."
         );
         exit(1)
     }
