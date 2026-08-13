@@ -3,6 +3,8 @@ use std::{collections::HashMap, path::PathBuf};
 use regex::Regex;
 
 use crate::{
+    dependency::resolver::ResolveContext,
+    model::lockfile::try_read_lockfile,
     model::{Configuration, Project},
     project::UpdateContext,
     util::consts,
@@ -37,6 +39,7 @@ pub(crate) fn resolve_dependencies(
     let mut compile_paths: Vec<PathBuf> = Vec::new();
     let mut shaded_jars: Vec<PathBuf> = Vec::new();
     let mut classpath: Option<String> = None;
+    let lockfile = try_read_lockfile()?;
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
     if let Some(dependencies) = configuration.dependencies() {
@@ -68,11 +71,15 @@ pub(crate) fn resolve_dependencies(
                     index + 1,
                     format!("{name} ... ")
                 );
-                let mut updated = match dep.resolve(
+                let updated = match dep.resolve(
                     name,
                     configuration.environment(),
                     regexes,
-                    UpdateContext::TaskInvoked,
+                    ResolveContext::for_dependency(
+                        UpdateContext::TaskInvoked,
+                        lockfile.as_ref(),
+                        name,
+                    ),
                 ) {
                     Ok(p) => p,
                     Err(e) => {
@@ -83,15 +90,15 @@ pub(crate) fn resolve_dependencies(
                 };
 
                 if reference.is_shaded() {
-                    shaded_jars.append(&mut updated.clone());
+                    shaded_jars.extend(updated.paths().cloned());
                 }
 
                 if reference.scope().is_on_compile_classpath() {
-                    compile_paths.append(&mut updated.clone());
+                    compile_paths.extend(updated.paths().cloned());
                 }
 
                 if reference.scope().is_on_runtime_classpath() && !reference.is_shaded() {
-                    paths.append(&mut updated);
+                    paths.extend(updated.paths().cloned());
                 }
             }
         }

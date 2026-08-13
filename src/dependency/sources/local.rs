@@ -5,13 +5,15 @@ use std::{
 
 use regex::Regex;
 
+use crate::dependency::resolver::ResolvedDependency;
 use crate::workspace::paths::resolve_filepath;
 
 pub fn resolve_file(
+    name: &str,
     path: &str,
     environment: &HashMap<String, String>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<Vec<PathBuf>, String> {
+) -> Result<ResolvedDependency, String> {
     let path = resolve_filepath(path, environment, regexes)?;
     let pathbuf = PathBuf::from(&path);
 
@@ -31,15 +33,19 @@ pub fn resolve_file(
     };
 
     println!("File found: {}", &canon_path.to_string_lossy());
-    Ok(vec![canon_path])
+    Ok(ResolvedDependency::from_paths(
+        String::from(name),
+        vec![canon_path],
+    ))
 }
 
 pub fn resolve_folder(
+    name: &str,
     path: &str,
     recursive: bool,
     environment: &HashMap<String, String>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<Vec<PathBuf>, String> {
+) -> Result<ResolvedDependency, String> {
     let path = resolve_filepath(path, environment, regexes)?;
     let pathbuf = PathBuf::from(&path);
 
@@ -77,7 +83,7 @@ pub fn resolve_folder(
     };
 
     println!("Found {} {text_plural}", &files.len());
-    Ok(files)
+    Ok(ResolvedDependency::from_paths(String::from(name), files))
 }
 
 fn collect_recursive(path: &Path, files: &mut Vec<PathBuf>) {
@@ -117,9 +123,18 @@ mod tests {
         let library = temp.path().join("library.jar");
         fs::write(&library, "").unwrap();
 
-        let paths = resolve_file(&library.to_string_lossy(), &environment(), &regexes()).unwrap();
+        let resolved = resolve_file(
+            "library",
+            &library.to_string_lossy(),
+            &environment(),
+            &regexes(),
+        )
+        .unwrap();
 
-        assert_eq!(paths, vec![library.canonicalize().unwrap()]);
+        assert_eq!(
+            resolved.paths().cloned().collect::<Vec<_>>(),
+            vec![library.canonicalize().unwrap()]
+        );
     }
 
     #[test]
@@ -129,15 +144,25 @@ mod tests {
         fs::write(&library, "").unwrap();
         let path = temp.path().join("{lib}");
 
-        let paths = resolve_file(&path.to_string_lossy(), &environment(), &regexes()).unwrap();
+        let resolved = resolve_file(
+            "library",
+            &path.to_string_lossy(),
+            &environment(),
+            &regexes(),
+        )
+        .unwrap();
 
-        assert_eq!(paths, vec![library.canonicalize().unwrap()]);
+        assert_eq!(
+            resolved.paths().cloned().collect::<Vec<_>>(),
+            vec![library.canonicalize().unwrap()]
+        );
     }
 
     #[test]
     fn resolve_file_rejects_missing_file() {
         let temp = TempDir::new("local-missing-file");
         let error = resolve_file(
+            "library",
             &temp.path().join("missing.jar").to_string_lossy(),
             &environment(),
             &regexes(),
@@ -155,13 +180,15 @@ mod tests {
         fs::write(temp.path().join("lib/nested/nested.jar"), "").unwrap();
         fs::write(temp.path().join("lib/nested/readme.txt"), "").unwrap();
 
-        let mut paths = resolve_folder(
+        let resolved = resolve_folder(
+            "library",
             &temp.path().join("lib").to_string_lossy(),
             true,
             &environment(),
             &regexes(),
         )
         .unwrap();
+        let mut paths = resolved.paths().cloned().collect::<Vec<_>>();
         paths.sort();
 
         assert_eq!(
@@ -180,7 +207,8 @@ mod tests {
         fs::write(temp.path().join("lib/root.jar"), "").unwrap();
         fs::write(temp.path().join("lib/nested/nested.jar"), "").unwrap();
 
-        let paths = resolve_folder(
+        let resolved = resolve_folder(
+            "library",
             &temp.path().join("lib").to_string_lossy(),
             false,
             &environment(),
@@ -188,6 +216,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(paths, vec![temp.path().join("lib/root.jar")]);
+        assert_eq!(
+            resolved.paths().cloned().collect::<Vec<_>>(),
+            vec![temp.path().join("lib/root.jar")]
+        );
     }
 }

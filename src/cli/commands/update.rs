@@ -1,6 +1,10 @@
 use std::process::exit;
 
 use crate::cli::args::StartupFlags;
+use crate::cli::commands::dependencies::{
+    dependency_selection_or_exit, read_lockfile_or_exit, write_full_lockfile_or_exit,
+    write_partial_lockfile_or_exit,
+};
 use crate::cli::commands::{
     configuration_or_exit, envvar_regexes, project_or_exit, update_dependencies_with_context,
 };
@@ -21,78 +25,33 @@ pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: 
 
     let configuration = configuration_or_exit(&project, &metadata.configuration);
     let regexes = envvar_regexes();
+    let lockfile = read_lockfile_or_exit();
     let mut refresh_failed = false;
+    let selection = dependency_selection_or_exit(&project, args, "update", false);
 
-    if args[2] == "all" {
-        let keys: Vec<String> = project.dependencies().keys().cloned().collect();
-
-        let failed = update_dependencies_with_context(
-            &keys,
-            project.dependencies(),
-            configuration.environment(),
-            &regexes,
-            UpdateContext::Update,
-        );
-
-        if !flags.no_refresh
-            && let Err((nature, error)) = refresh(&project, configuration, &regexes)
-        {
-            println!("Failed to refresh nature {}: {error}", nature.type_str());
-            refresh_failed = true
-        }
-
-        if !failed.is_empty() {
-            println!("Failed to resolve one or more dependencies:");
-            for (name, reason) in &failed {
-                println!("\t{name}: {reason}");
-            }
-
-            exit(1)
-        }
-
-        if refresh_failed {
-            println!("Dependencies updated, however project might be in a degraded state.");
-            exit(1)
-        }
-
-        println!("Operation complete!");
-
-        exit(0)
-    }
-
-    let mut target_dependencies: Vec<String> = Vec::new();
-    for a in args[2..].iter() {
-        if !project.dependencies().contains_key(a) {
-            println!("No such dependency \"{}\" has been defined.", a);
-            if project.dependencies().is_empty() {
-                println!(
-                    "Fix: add dependencies under a table such as `[dependencies.maven]`, or run `wisteria update all` only after dependencies are configured."
-                );
-            } else {
-                println!("Valid dependencies:");
-                let mut dependencies: Vec<&str> =
-                    project.dependencies().keys().map(String::as_str).collect();
-                dependencies.sort_unstable();
-                for dependency in dependencies {
-                    println!("- {dependency}");
-                }
-                println!(
-                    "Fix: use one of the dependency names above, or add `{a}` to project.toml."
-                );
-            }
-            exit(1)
-        }
-
-        target_dependencies.push(a.clone());
-    }
-
-    let failed = update_dependencies_with_context(
-        &target_dependencies,
+    let result = update_dependencies_with_context(
+        selection.names(),
         project.dependencies(),
         configuration.environment(),
         &regexes,
         UpdateContext::Update,
+        lockfile.as_ref(),
     );
+
+    if !result.failed.is_empty() {
+        println!("Failed to resolve one or more dependencies:");
+        for (name, reason) in &result.failed {
+            println!("\t{name}: {reason}");
+        }
+
+        exit(1)
+    }
+
+    if selection.all_dependencies() {
+        write_full_lockfile_or_exit(&result.resolved);
+    } else {
+        write_partial_lockfile_or_exit(lockfile.as_ref(), &result.resolved, selection.names());
+    }
 
     if !flags.no_refresh
         && let Err((nature, error)) = refresh(&project, configuration, &regexes)
@@ -101,16 +60,12 @@ pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: 
         refresh_failed = true
     }
 
-    if !failed.is_empty() {
-        println!("Failed to resolve one or more dependencies:");
-        for (name, reason) in &failed {
-            println!("\t{name}: {reason}");
-        }
-
-        exit(1)
-    }
     if refresh_failed {
-        println!("Dependency updated, however project might be in a degraded state.");
+        if selection.all_dependencies() {
+            println!("Dependencies updated, however project might be in a degraded state.");
+        } else {
+            println!("Dependency updated, however project might be in a degraded state.");
+        }
         exit(1)
     }
 

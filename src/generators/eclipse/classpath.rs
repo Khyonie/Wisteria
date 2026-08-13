@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use regex::Regex;
 use xml::{EmitterConfig, EventWriter, common::XmlVersion, writer::XmlEvent};
 
+use crate::dependency::resolver::ResolveContext;
 use crate::dependency::{Dependency, UpdateContext};
+use crate::model::lockfile::try_read_lockfile;
 use crate::model::{Configuration, Project};
 use crate::util::consts;
 use crate::workspace::nature::Nature;
@@ -48,6 +50,7 @@ pub fn generate_classpath(
     let use_maven_container = has_maven_nature(project);
 
     if let Some(dependencies) = configuration.dependencies() {
+        let lockfile = try_read_lockfile()?;
         let mut width: usize = usize::MIN;
         for reference in dependencies.iter() {
             width = usize::max(reference.name().len(), width);
@@ -61,7 +64,7 @@ pub fn generate_classpath(
                 continue;
             }
 
-            print!(
+            println!(
                 "({}/{size}) Resolving {:width$}",
                 index + 1,
                 format!("{} ... ", reference.name())
@@ -83,10 +86,14 @@ pub fn generate_classpath(
                 reference.name(),
                 configuration.environment(),
                 regexes,
-                UpdateContext::ResolveOnly,
+                ResolveContext::for_dependency(
+                    UpdateContext::ResolveOnly,
+                    lockfile.as_ref(),
+                    reference.name(),
+                ),
             ) {
-                Ok(paths) => {
-                    for path in paths {
+                Ok(resolved) => {
+                    for path in resolved.paths() {
                         let path: &str = path.to_str().unwrap();
                         let dep = XmlEvent::start_element("classpathentry")
                             .attr("kind", "lib")
@@ -174,7 +181,7 @@ fn has_maven_nature(project: &Project) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::TempDir;
+    use crate::test_support::{TempDir, with_current_dir};
     use std::fs;
 
     fn regexes() -> HashMap<&'static str, Regex> {
@@ -220,7 +227,9 @@ mod tests {
         );
         let configuration = project.info().configurations().get("main").unwrap();
 
-        let xml = generate_classpath(&project, configuration, &regexes()).unwrap();
+        let xml = with_current_dir(temp.path(), || {
+            generate_classpath(&project, configuration, &regexes()).unwrap()
+        });
 
         assert!(xml.contains(r#"kind="src""#));
         assert!(xml.contains(r#"path="src/""#));
@@ -262,7 +271,9 @@ mod tests {
         );
         let configuration = project.info().configurations().get("main").unwrap();
 
-        let xml = generate_classpath(&project, configuration, &regexes()).unwrap();
+        let xml = with_current_dir(temp.path(), || {
+            generate_classpath(&project, configuration, &regexes()).unwrap()
+        });
 
         assert!(xml.contains(r#"name="javadoc_location" value="https://example.com/docs/""#));
         assert!(
@@ -293,7 +304,9 @@ mod tests {
         );
         let configuration = project.info().configurations().get("main").unwrap();
 
-        let xml = generate_classpath(&project, configuration, &regexes()).unwrap();
+        let xml = with_current_dir(temp.path(), || {
+            generate_classpath(&project, configuration, &regexes()).unwrap()
+        });
 
         assert!(xml.contains("org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER"));
         assert!(!xml.contains(".wisteria/cache/com.example/library"));

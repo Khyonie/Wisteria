@@ -1,8 +1,6 @@
 use std::env::consts;
 
-pub const VERSION: &str = "3.4.0";
-
-pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | update | info | switch | migrate > 
+pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | sync | fetch | verify | update | info | switch | migrate > 
     (tasks...)
         Runs the specified tasks, in order, and at least one task must be given
 
@@ -12,6 +10,12 @@ pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | up
         Configures the project environment using the current configuration
     new <name>
         Creates a new project with the given name
+    sync [(dependencies...) | all]
+        Updates wisteria.lock from project.toml without downloading artifacts
+    fetch [(dependencies...) | all]
+        Downloads cached artifacts to match wisteria.lock without changing the lockfile
+    verify
+        Checks that project.toml, wisteria.lock, and cached dependencies agree
     update <(dependencies...) | all>
         Re-fetches the given dependencies, or all dependencies in a project file
     clean <classes | dependencies | targets | javadocs | metadata | natures | all>
@@ -37,6 +41,9 @@ pub const PROJECT_FILE: &str = "project.toml";
 pub const WISTERIA2_BACKUP_EXTENSION: &str = "wisteria2.bak";
 
 pub const WISTERIA_DIR: &str = ".wisteria";
+pub const LOCKFILE: &str = "wisteria.lock";
+pub const LOCKFILE_TEMP: &str = "wisteria.lock.tmp";
+pub const TEMP_FILE_EXTENSION: &str = "tmp";
 pub const METADATA_FILE: &str = ".wisteria/metadata.toml";
 pub const CACHE_PATH: &str = ".wisteria/cache";
 pub const WORK_DIR: &str = ".wisteria/work";
