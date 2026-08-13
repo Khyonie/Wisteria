@@ -4,6 +4,7 @@ use regex::Regex;
 
 use crate::dependency::sources;
 use crate::dependency::{Dependency, UpdateContext};
+use crate::model::LockfileArtifact;
 
 impl Dependency {
     pub fn resolve(
@@ -61,4 +62,15 @@ impl Dependency {
             Dependency::BuildFromScript { .. } => todo!(),
         }
     }
+}
+
+pub struct ResolvedDependency {
+    pub name: String,
+    pub artifacts: Vec<ResolvedArtifact>,
+}
+
+#[derive(Clone)]
+pub struct ResolvedArtifact {
+    pub path: PathBuf,
+    pub lock: Option<LockfileArtifact>,
 }

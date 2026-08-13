@@ -37,6 +37,8 @@ pub const PROJECT_FILE: &str = "project.toml";
 pub const WISTERIA2_BACKUP_EXTENSION: &str = "wisteria2.bak";
 
 pub const WISTERIA_DIR: &str = ".wisteria";
+pub const LOCKFILE: &str = "wisteria.lock";
+pub const LOCKFILE_TEMP: &str = "wisteria.lock.tmp";
 pub const METADATA_FILE: &str = ".wisteria/metadata.toml";
 pub const CACHE_PATH: &str = ".wisteria/cache";
 pub const WORK_DIR: &str = ".wisteria/work";
