@@ -57,6 +57,13 @@ pub(crate) fn dependency_selection_or_exit(
         };
     }
 
+    if let Some(duplicate) = duplicate_dependency_name(&args[2..]) {
+        println!(
+            "Dependency `{duplicate}` was listed more than once.\nFix: list each dependency at most once, or run `wisteria {command} all`."
+        );
+        exit(1)
+    }
+
     DependencySelection {
         names: dependency_names_or_exit(project, &args[2..], command),
         all_dependencies: false,
@@ -206,9 +213,49 @@ fn dependency_names_or_exit(project: &Project, names: &[String], command: &str) 
     selected
 }
 
+pub(crate) fn duplicate_dependency_name(names: &[String]) -> Option<&str> {
+    let mut seen = HashSet::new();
+    for name in names {
+        let name = name.as_str();
+        if !seen.insert(name) {
+            return Some(name);
+        }
+    }
+
+    None
+}
+
 fn write_lockfile_or_exit(toml: &str) {
     if let Err(error) = write_lockfile(toml) {
         println!("{error}");
         exit(1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_dependency_name_returns_first_duplicate() {
+        let names = vec![
+            String::from("alpha"),
+            String::from("beta"),
+            String::from("alpha"),
+            String::from("beta"),
+        ];
+
+        assert_eq!(duplicate_dependency_name(&names), Some("alpha"));
+    }
+
+    #[test]
+    fn duplicate_dependency_name_accepts_unique_names() {
+        let names = vec![
+            String::from("alpha"),
+            String::from("beta"),
+            String::from("gamma"),
+        ];
+
+        assert_eq!(duplicate_dependency_name(&names), None);
     }
 }

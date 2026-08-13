@@ -6,7 +6,7 @@ use std::{
     process::exit,
 };
 
-use crate::cli::commands::dependencies::require_lockfile_or_exit;
+use crate::cli::commands::dependencies::{duplicate_dependency_name, require_lockfile_or_exit};
 use crate::cli::commands::project_or_exit;
 use crate::model::{Lockfile, LockfileArtifact, Project};
 use crate::util::consts;
@@ -84,6 +84,12 @@ fn select_lockfile_artifacts<'a>(
         }
 
         return Ok(lockfile.artifacts().iter().collect());
+    }
+
+    if let Some(duplicate) = duplicate_dependency_name(&args[2..]) {
+        return Err(format!(
+            "Dependency `{duplicate}` was listed more than once.\nFix: list each dependency at most once, or run `wisteria fetch all`."
+        ));
     }
 
     let mut artifacts = Vec::new();
@@ -260,5 +266,21 @@ mod tests {
 
         assert!(error.contains("No dependency named \"missing\""));
         assert!(error.contains("Locked dependencies"));
+    }
+
+    #[test]
+    fn select_lockfile_artifacts_rejects_duplicate_dependency() {
+        let lockfile = Lockfile::from_artifacts_for_test(vec![locked_artifact()]);
+        let args = vec![
+            String::from("wisteria"),
+            String::from("fetch"),
+            String::from("library"),
+            String::from("library"),
+        ];
+
+        let error = select_lockfile_artifacts(&lockfile, &args).unwrap_err();
+
+        assert!(error.contains("listed more than once"));
+        assert!(error.contains("wisteria fetch all"));
     }
 }
