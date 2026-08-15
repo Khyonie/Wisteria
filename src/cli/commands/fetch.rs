@@ -1,57 +1,67 @@
 use std::{
     collections::BTreeSet,
     fs,
-    io::{self, Write},
     path::{Path, PathBuf},
     process::exit,
 };
 
+use crate::cli::args::StartupFlags;
 use crate::cli::commands::dependencies::{duplicate_dependency_name, require_lockfile_or_exit};
 use crate::cli::commands::project_or_exit;
 use crate::model::{Lockfile, LockfileArtifact, Project};
+use crate::output;
 use crate::util::consts;
 use crate::workspace::{download, files, paths};
 
-pub fn trigger_fetch(project: Result<Project, String>, args: &[String]) {
+pub fn trigger_fetch(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let _project: Project = project_or_exit(project);
     let lockfile = require_lockfile_or_exit();
     let artifacts = lockfile_artifacts_or_exit(&lockfile, args);
 
     let mut failed_fetches = Vec::new();
-    let width = artifacts
-        .iter()
-        .map(|artifact| artifact.name().len())
-        .max()
-        .unwrap_or_default()
-        + 5;
     let size = artifacts.len();
+    let mut output = output::renderer(flags.output_mode);
+    output.operation_started("fetch", size);
 
     for (index, artifact) in artifacts.iter().enumerate() {
-        print!(
-            "({}/{size}) Fetching {:width$}",
-            index + 1,
-            format!("{} ... ", artifact.name())
-        );
-        let _ = io::stdout().flush();
+        let step = index + 1;
+        output.step_started("fetch", "Fetching", artifact.name(), step, size);
 
         match fetch_lockfile_artifact(artifact) {
-            Ok(status) => println!("{status}"),
+            Ok(status) => {
+                output.step_completed("fetch", "Fetching", artifact.name(), step, size, &status)
+            }
             Err(error) => {
-                println!("Failed");
+                output.step_failed("fetch", "Fetching", artifact.name(), step, size, &error);
                 failed_fetches.push((artifact.name().to_string(), error));
             }
         }
     }
 
+    if failed_fetches.is_empty() {
+        output.operation_completed("fetch", &fetch_summary(artifacts.len()));
+    } else {
+        output.operation_completed("fetch", "Fetch finished with errors.");
+    }
+
     if !failed_fetches.is_empty() {
-        println!("Failed to fetch one or more dependencies:");
+        output.log("Failed to fetch one or more dependencies:");
         for (name, reason) in &failed_fetches {
-            println!("\t{name}: {reason}");
+            output.log(&format!("\t{name}: {reason}"));
         }
         exit(1)
     }
+}
 
-    println!("Operation complete!");
+fn fetch_summary(count: usize) -> String {
+    format!("Fetched {count} {}", dependency_label(count))
+}
+
+fn dependency_label(count: usize) -> &'static str {
+    match count {
+        1 => "dependency",
+        _ => "dependencies",
+    }
 }
 
 fn lockfile_artifacts_or_exit<'a>(

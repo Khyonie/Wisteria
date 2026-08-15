@@ -43,17 +43,8 @@ pub(crate) fn resolve_dependencies(
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
     if let Some(dependencies) = configuration.dependencies() {
-        let mut width: usize = usize::MIN;
         for reference in dependencies.iter() {
-            width = usize::max(reference.name().len(), width);
-        }
-
-        width += 5;
-        let size = dependencies.len();
-
-        for (index, reference) in dependencies.iter().enumerate() {
             let Some((name, dep)) = project.dependencies().get_key_value(reference.name()) else {
-                println!("Usage of undeclared dependency \"{}\"", reference.name());
                 failed_downloads.push((
                     reference.name().to_string(),
                     String::from("dependency is not declared in [dependencies]"),
@@ -66,11 +57,6 @@ pub(crate) fn resolve_dependencies(
             }
 
             {
-                print!(
-                    "({}/{size}) Updating {:width$}",
-                    index + 1,
-                    format!("{name} ... ")
-                );
                 let updated = match dep.resolve(
                     name,
                     configuration.environment(),
@@ -83,7 +69,6 @@ pub(crate) fn resolve_dependencies(
                 ) {
                     Ok(p) => p,
                     Err(e) => {
-                        println!("Could not download {name}: {e}");
                         failed_downloads.push((name.clone(), e));
                         continue;
                     }
@@ -104,21 +89,9 @@ pub(crate) fn resolve_dependencies(
         }
 
         if !failed_downloads.is_empty() {
-            println!("Failed to resolve {} {}:", failed_downloads.len(), {
-                if failed_downloads.len() == 1 {
-                    "dependency"
-                } else {
-                    "dependencies"
-                }
-            });
-            for (name, error) in failed_downloads {
-                println!("- {name}: {error}");
-            }
-
-            return Err(String::from("Could not resolve all dependencies"));
+            return Err(format_failed_dependencies(failed_downloads));
         }
 
-        println!("Successfully resolved all dependencies!");
         let mut buffer: String = String::new();
         for dep in &compile_paths {
             buffer.push_str(&dep.to_string_lossy());
@@ -136,6 +109,24 @@ pub(crate) fn resolve_dependencies(
         shaded_jars,
         classpath,
     })
+}
+
+fn format_failed_dependencies(failed_downloads: Vec<(String, String)>) -> String {
+    let mut message = format!(
+        "Failed to resolve {} {}:",
+        failed_downloads.len(),
+        if failed_downloads.len() == 1 {
+            "dependency"
+        } else {
+            "dependencies"
+        }
+    );
+
+    for (name, error) in failed_downloads {
+        message.push_str(&format!("\n- {name}: {error}"));
+    }
+
+    message
 }
 
 #[cfg(test)]

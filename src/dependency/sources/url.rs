@@ -19,7 +19,7 @@ pub fn resolve(
 
     if context.should_update(update_policy) {
         paths::ensure_parents(&filepath)?;
-        download::download(name.to_string(), url.to_string(), filepath.clone())?;
+        download::download_silent(name.to_string(), url.to_string(), filepath.clone())?;
         return resolve_cached_artifact(name, path, url.to_string(), filepath);
     }
 

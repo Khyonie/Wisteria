@@ -2,6 +2,7 @@ use std::process::Command;
 
 use crate::{
     model::Configuration,
+    output::{self, OutputRenderer},
     util::{consts, exit_code},
 };
 
@@ -9,6 +10,7 @@ pub fn compile_sources(
     configuration: &Configuration,
     copied_files: Vec<String>,
     classpath: Option<&str>,
+    renderer: &mut dyn OutputRenderer,
 ) -> Result<(), String> {
     let mut javac_command: Command = Command::new("javac");
     javac_command.args(["-d", consts::BINARY_OUT_PATH]);
@@ -28,23 +30,16 @@ pub fn compile_sources(
         javac_command.arg(file);
     }
 
-    println!("Compiling {} source files", copied_files.len());
     match javac_command.output() {
         Ok(out) => {
-            if !out.stdout.is_empty() {
-                println!("{}", String::from_utf8_lossy(&out.stdout));
-            }
-
-            if !out.stderr.is_empty() {
-                println!("{}", String::from_utf8_lossy(&out.stderr));
-            }
+            output::log_process_output(renderer, &out.stdout, &out.stderr);
 
             if !out.status.success() {
                 exit_code::record_external_process_exit_code(out.status);
                 return Err(format!("javac failed with status {}", out.status));
             }
         }
-        Err(e) => return Err(format!("{e}")),
+        Err(e) => return Err(format!("Failed to run javac command: {e}")),
     }
 
     Ok(())

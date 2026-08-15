@@ -1,5 +1,6 @@
 use std::{env, process::exit};
 
+use crate::output::OutputMode;
 use crate::util::consts;
 
 /// Flags added with the -- prefix.
@@ -9,6 +10,7 @@ pub struct StartupFlags {
     pub use_project: Option<String>,
     pub no_refresh: bool,
     pub no_git: bool,
+    pub output_mode: OutputMode,
     pub passed_args: Vec<String>,
 }
 
@@ -34,20 +36,43 @@ pub fn load_arguments(args: &mut Vec<String>) -> StartupFlags {
                 continue;
             }
 
-            // Wisteria argrs
-            match arg.split_once("--").unwrap().1 {
+            let raw_flag = arg.strip_prefix("--").unwrap();
+            let (flag, inline_value) = match raw_flag.split_once('=') {
+                Some((flag, value)) => (flag, Some(value.to_string())),
+                None => (raw_flag, None),
+            };
+
+            // Wisteria args
+            match flag {
                 "minimal" => flags.minimal = true,
                 "norefresh" => flags.no_refresh = true,
                 "nogit" => flags.no_git = true,
-                "project" => match args_iter.next() {
-                    Some(a) => flags.use_project = Some(a.clone()),
-                    None => {
-                        println!(
-                            "Missing argument for --project flag. Must specify the file which contains the project configuration, usually \"{}\".",
-                            consts::PROJECT_FILE
-                        );
-                        exit(1)
-                    }
+                "output" | "format" => match flag_value(
+                    flag,
+                    inline_value,
+                    &mut args_iter,
+                    "Expected one of [auto, plain, terminal, json].",
+                ) {
+                    Some(value) => match OutputMode::load(&value) {
+                        Ok(mode) => flags.output_mode = mode,
+                        Err(error) => {
+                            println!("{error}");
+                            exit(1)
+                        }
+                    },
+                    None => exit(1),
+                },
+                "project" => match flag_value(
+                    flag,
+                    inline_value,
+                    &mut args_iter,
+                    &format!(
+                        "Must specify the file which contains the project configuration, usually \"{}\".",
+                        consts::PROJECT_FILE
+                    ),
+                ) {
+                    Some(value) => flags.use_project = Some(value),
+                    None => exit(1),
                 },
                 _ => {
                     println!("Unknown flag \"{arg}\"");
@@ -66,4 +91,22 @@ pub fn load_arguments(args: &mut Vec<String>) -> StartupFlags {
     }
 
     flags
+}
+
+fn flag_value(
+    flag: &str,
+    inline_value: Option<String>,
+    args_iter: &mut std::slice::Iter<'_, String>,
+    expectation: &str,
+) -> Option<String> {
+    match inline_value {
+        Some(value) => Some(value),
+        None => match args_iter.next() {
+            Some(value) => Some(value.clone()),
+            None => {
+                println!("Missing argument for --{flag} flag. {expectation}");
+                None
+            }
+        },
+    }
 }

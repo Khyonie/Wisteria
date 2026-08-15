@@ -4,14 +4,6 @@ use reqwest::{StatusCode, blocking::Client};
 
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
 
-pub fn download(name: String, url: String, filepath: String) -> Result<(), String> {
-    let size = download_silent(name, url, filepath.clone())?;
-
-    println!("Copied {:.3} MB into {filepath}", size);
-
-    Ok(())
-}
-
 pub fn download_silent(name: String, url: String, filepath: String) -> Result<f32, String> {
     let client: Client = Client::new();
     let mut response = match client.get(&url).header("User-Agent", USER_AGENT).send() {

@@ -3,7 +3,7 @@ use std::process::Command;
 use crate::{
     cli::args::StartupFlags,
     model::{Configuration, Project, ProjectInfo},
-    project::{ImplicitBuildTask, TaskRunner},
+    project::{ImplicitBuildTask, TaskOutput, TaskRunner},
     util::{consts, exit_code},
 };
 
@@ -16,6 +16,7 @@ impl ImplicitRunTask {
     pub fn new(flags: StartupFlags) -> Self {
         ImplicitRunTask {
             order: vec![
+                String::from("resolve"),
                 String::from("collect"),
                 String::from("compile"),
                 String::from("shade"),
@@ -33,10 +34,22 @@ impl TaskRunner for ImplicitRunTask {
         info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
+        output: &mut TaskOutput<'_>,
     ) -> Result<(), String> {
-        ImplicitBuildTask::new().invoke(info, project, configuration)?;
+        ImplicitBuildTask::new().invoke(info, project, configuration, output)?;
 
-        self.run()
+        output.step_started("Running", "application", 6);
+        output.suspend();
+        match self.run() {
+            Ok(()) => {
+                output.step_completed("Running", "application", 6, "Done");
+                Ok(())
+            }
+            Err(error) => {
+                output.step_failed("Running", "application", 6, &error);
+                Err(error)
+            }
+        }
     }
 
     fn phase_order(&self) -> &[String] {

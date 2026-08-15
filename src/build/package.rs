@@ -5,6 +5,7 @@ use sha256::digest;
 
 use crate::java::manifest::{Manifest, ManifestEntry};
 use crate::model::Configuration;
+use crate::output::{self, OutputRenderer};
 use crate::util::{consts, exit_code};
 use crate::workspace::paths::resolve_filepath;
 
@@ -14,7 +15,8 @@ pub fn package_jar(
     shaded_jars: &[PathBuf],
     targets: Option<&Vec<String>>,
     regexes: &HashMap<&str, Regex>,
-) -> Result<Vec<String>, String> {
+    renderer: &mut dyn OutputRenderer,
+) -> Result<String, String> {
     let mut manifest: Manifest = Manifest::new();
     manifest.add_entry(ManifestEntry::CreatedBy {
         signature: String::from("Wisteria 3"),
@@ -57,14 +59,7 @@ pub fn package_jar(
 
     match jar_command.output() {
         Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if !stdout.is_empty() {
-                println!("{stdout}")
-            }
-            if !stderr.is_empty() {
-                println!("{stderr}")
-            }
+            output::log_process_output(renderer, &output.stdout, &output.stderr);
 
             if !output.status.success() {
                 exit_code::record_external_process_exit_code(output.status);
@@ -86,14 +81,7 @@ pub fn package_jar(
 
         match jar_update_command.output() {
             Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                if !stdout.is_empty() {
-                    println!("{stdout}")
-                }
-                if !stderr.is_empty() {
-                    println!("{stderr}")
-                }
+                output::log_process_output(renderer, &output.stdout, &output.stderr);
 
                 if !output.status.success() {
                     exit_code::record_external_process_exit_code(output.status);
@@ -107,11 +95,9 @@ pub fn package_jar(
         }
     }
 
-    let mut outputs = Vec::new();
     let bytes: Vec<u8> = fs::read(consts::TARGET_JAR_PATH)
         .map_err(|e| format!("Failed to read packaged jar for hashing: {e}"))?;
     let hash = digest(&bytes);
-    println!("Packaged, hash: #{hash}");
 
     if let Some(targets) = targets {
         for target in targets {
@@ -132,10 +118,9 @@ pub fn package_jar(
 
             fs::write(&target, &bytes)
                 .map_err(|e| format!("Failed to write to target {target}: {e}"))?;
-            println!("Successfully written target {target}");
-            outputs.push(target_path.to_string_lossy().to_string())
+            renderer.log(&format!("Successfully written target {target}"));
         }
     }
 
-    Ok(outputs)
+    Ok(hash)
 }

@@ -51,34 +51,18 @@ pub fn generate_classpath(
 
     if let Some(dependencies) = configuration.dependencies() {
         let lockfile = try_read_lockfile()?;
-        let mut width: usize = usize::MIN;
+
         for reference in dependencies.iter() {
-            width = usize::max(reference.name().len(), width);
-        }
-
-        width += 5;
-        let size = dependencies.len();
-
-        for (index, reference) in dependencies.iter().enumerate() {
             if !reference.scope().is_on_compile_classpath() {
                 continue;
             }
 
-            println!(
-                "({}/{size}) Resolving {:width$}",
-                index + 1,
-                format!("{} ... ", reference.name())
-            );
             let dependencies_opt = match project.dependencies().get(reference.name()) {
                 Some(dep) => dep,
-                None => {
-                    println!("Unknown dependency \"{}\"!", reference.name());
-                    continue;
-                }
+                None => return Err(format!("Unknown dependency \"{}\".", reference.name())),
             };
             if use_maven_container && matches!(dependencies_opt, Dependency::FetchFromMaven { .. })
             {
-                println!("Resolved by Maven");
                 continue;
             }
 
