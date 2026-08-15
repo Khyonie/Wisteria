@@ -77,12 +77,7 @@ fn resolve_os_var(unix: &str, windows: &str) -> Option<String> {
     match env::consts::OS {
         "macos" | "linux" => var_os(unix).map(|s| s.to_string_lossy().to_string()),
         "windows" => var_os(windows).map(|s| s.to_string_lossy().to_string()),
-        _ => {
-            println!(
-                "You're using an unknown operating system. Cannot resolve environmental variables."
-            );
-            None
-        }
+        _ => None,
     }
 }
 

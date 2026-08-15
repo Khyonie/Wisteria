@@ -5,6 +5,7 @@ use regex::Regex;
 use crate::dependency::resolver::{ResolveContext, ResolvedDependency};
 use crate::dependency::{Dependency, UpdateContext};
 use crate::model::{Configuration, Lockfile, Project};
+use crate::output::OutputRenderer;
 
 pub mod clean;
 pub mod create;
@@ -82,7 +83,22 @@ pub(crate) struct DependencyResolutionResult {
     pub(crate) failed: Vec<(String, String)>,
 }
 
+pub(crate) struct CommandOutput<'a> {
+    renderer: &'a mut dyn OutputRenderer,
+    operation: &'a str,
+}
+
+impl<'a> CommandOutput<'a> {
+    pub(crate) fn new(renderer: &'a mut dyn OutputRenderer, operation: &'a str) -> Self {
+        Self {
+            renderer,
+            operation,
+        }
+    }
+}
+
 pub(crate) fn update_dependencies_with_context(
+    output: CommandOutput<'_>,
     targets: &[String],
     dependencies: &HashMap<String, Dependency>,
     environment: &HashMap<String, String>,
@@ -90,28 +106,22 @@ pub(crate) fn update_dependencies_with_context(
     context: UpdateContext,
     lockfile: Option<&Lockfile>,
 ) -> DependencyResolutionResult {
-    let mut width: usize = usize::MIN;
-    for name in targets.iter() {
-        width = usize::max(name.len(), width);
-    }
-
-    width += 5;
-
     let mut resolved_dependencies: Vec<ResolvedDependency> = Vec::new();
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
-    let (action, failure_action, completes_progress_line) = match context {
-        UpdateContext::ResolveOnly => ("Resolving", "resolve", true),
-        _ => ("Updating", "download", false),
+    let (action, failure_action) = match context {
+        UpdateContext::ResolveOnly => ("Resolving", "resolve"),
+        _ => ("Updating", "download"),
     };
     let size = targets.len();
+    output.renderer.operation_started(output.operation, size);
+
     for (index, target) in targets.iter().enumerate() {
+        let step = index + 1;
         match dependencies.get_key_value(target) {
             Some((name, dep)) => {
-                print!(
-                    "({}/{size}) {action} {:width$}",
-                    index + 1,
-                    format!("{name} ... ")
-                );
+                output
+                    .renderer
+                    .step_started(output.operation, action, name, step, size);
                 match dep.resolve(
                     name,
                     environment,
@@ -119,26 +129,75 @@ pub(crate) fn update_dependencies_with_context(
                     ResolveContext::for_dependency(context, lockfile, name),
                 ) {
                     Ok(resolved) => {
-                        if completes_progress_line {
-                            println!("Done");
-                        }
+                        output.renderer.step_completed(
+                            output.operation,
+                            action,
+                            name,
+                            step,
+                            size,
+                            "Done",
+                        );
                         resolved_dependencies.push(resolved)
                     }
                     Err(e) => {
-                        println!("Could not {failure_action} {name}: {e}");
+                        output.renderer.step_failed(
+                            output.operation,
+                            action,
+                            name,
+                            step,
+                            size,
+                            &format!("Could not {failure_action} {name}: {e}"),
+                        );
                         failed_downloads.push((name.clone(), e));
                         continue;
                     }
                 };
             }
             None => {
-                println!("Usage of undeclared dependency \"{target}\"");
+                output
+                    .renderer
+                    .log(&format!("Usage of undeclared dependency \"{target}\""));
             }
         }
+    }
+
+    if failed_downloads.is_empty() {
+        output.renderer.operation_completed(
+            output.operation,
+            &dependency_operation_summary(action, resolved_dependencies.len()),
+        );
+    } else {
+        output.renderer.operation_completed(
+            output.operation,
+            "Dependency resolution finished with errors.",
+        );
     }
 
     DependencyResolutionResult {
         resolved: resolved_dependencies,
         failed: failed_downloads,
+    }
+}
+
+fn dependency_operation_summary(action: &str, count: usize) -> String {
+    format!(
+        "{} {count} {}",
+        completed_action(action),
+        dependency_label(count)
+    )
+}
+
+fn completed_action(action: &str) -> &'static str {
+    match action {
+        "Resolving" => "Resolved",
+        "Updating" => "Updated",
+        _ => "Completed",
+    }
+}
+
+fn dependency_label(count: usize) -> &'static str {
+    match count {
+        1 => "dependency",
+        _ => "dependencies",
     }
 }

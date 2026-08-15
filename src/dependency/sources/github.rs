@@ -95,11 +95,10 @@ fn resolve_updated_artifact(
     let full_url = github_release_url(username, repository, resolved_tag, &asset);
 
     if path.exists() {
-        println!("Nothing to do");
         return resolve_cached_artifact(name, path, resolved_tag, full_url, filepath);
     }
 
-    download::download(repository.to_string(), full_url.clone(), filepath.clone())?;
+    download::download_silent(repository.to_string(), full_url.clone(), filepath.clone())?;
     resolve_cached_artifact(name, path, resolved_tag, full_url, filepath)
 }
 

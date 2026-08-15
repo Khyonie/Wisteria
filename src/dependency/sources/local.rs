@@ -32,7 +32,6 @@ pub fn resolve_file(
         Err(e) => return Err(format!("Could not canonicalize path \"{path}\": {e}")),
     };
 
-    println!("File found: {}", &canon_path.to_string_lossy());
     Ok(ResolvedDependency::from_paths(
         String::from(name),
         vec![canon_path],
@@ -76,13 +75,6 @@ pub fn resolve_folder(
         }
     }
 
-    let text_plural = if files.len() == 1 {
-        "library"
-    } else {
-        "libraries"
-    };
-
-    println!("Found {} {text_plural}", &files.len());
     Ok(ResolvedDependency::from_paths(String::from(name), files))
 }
 

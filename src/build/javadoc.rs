@@ -6,9 +6,11 @@ use crate::{
     build::{
         resolve::{ResolvedDependencies, resolve_dependencies},
         sources,
+        task::TaskOutput,
     },
     java::compiler_flags::CompilerFlags,
     model::{Configuration, Project, ProjectInfo},
+    output::{self, OutputRenderer},
     project::TaskRunner,
     util::{consts, exit_code},
     workspace::paths::resolve_filepath,
@@ -42,20 +44,62 @@ impl TaskRunner for ImplicitJavadocTask {
         _info: &ProjectInfo,
         project: &Project,
         configuration: &Configuration,
+        output: &mut TaskOutput<'_>,
     ) -> Result<(), String> {
         let mut regexes: HashMap<&str, Regex> = HashMap::new();
         regexes.insert("envvars", Regex::new(r#"\{(.+?)}"#).unwrap());
 
-        let copied_files = sources::collect_sources(configuration)?;
-        let dependencies = resolve_dependencies(project, configuration, &regexes)?;
+        output.step_started("Collecting", "sources", 1);
+        let copied_files = match sources::collect_sources(configuration) {
+            Ok(copied_files) => {
+                output.step_completed(
+                    "Collecting",
+                    "sources",
+                    1,
+                    &format!(
+                        "{} source {}",
+                        copied_files.len(),
+                        plural(copied_files.len())
+                    ),
+                );
+                copied_files
+            }
+            Err(error) => {
+                output.step_failed("Collecting", "sources", 1, &error);
+                return Err(error);
+            }
+        };
 
-        run_javadoc(
+        output.step_started("Resolving", "dependencies", 2);
+        let dependencies = match resolve_dependencies(project, configuration, &regexes) {
+            Ok(dependencies) => {
+                output.step_completed("Resolving", "dependencies", 2, "Done");
+                dependencies
+            }
+            Err(error) => {
+                output.step_failed("Resolving", "dependencies", 2, &error);
+                return Err(error);
+            }
+        };
+
+        output.step_started("Generating", "javadocs", 3);
+        match run_javadoc(
             project,
             configuration,
             &dependencies,
             copied_files,
             &regexes,
-        )
+            output.renderer(),
+        ) {
+            Ok(()) => {
+                output.step_completed("Generating", "javadocs", 3, "Done");
+                Ok(())
+            }
+            Err(error) => {
+                output.step_failed("Generating", "javadocs", 3, &error);
+                Err(error)
+            }
+        }
     }
 
     fn phase_order(&self) -> &[String] {
@@ -69,6 +113,7 @@ fn run_javadoc(
     dependencies: &ResolvedDependencies,
     copied_files: Vec<String>,
     regexes: &HashMap<&str, Regex>,
+    renderer: &mut dyn OutputRenderer,
 ) -> Result<(), String> {
     let classpath = dependencies.classpath();
     let javadoc_links = dependency_javadoc_links(project, configuration);
@@ -84,19 +129,9 @@ fn run_javadoc(
     let mut javadoc_command = Command::new("javadoc");
     javadoc_command.args(&args);
 
-    println!(
-        "Generating javadocs for {} source files",
-        copied_files.len()
-    );
     match javadoc_command.output() {
         Ok(out) => {
-            if !out.stdout.is_empty() {
-                println!("{}", String::from_utf8_lossy(&out.stdout));
-            }
-
-            if !out.stderr.is_empty() {
-                println!("{}", String::from_utf8_lossy(&out.stderr));
-            }
+            output::log_process_output(renderer, &out.stdout, &out.stderr);
 
             if !out.status.success() {
                 exit_code::record_external_process_exit_code(out.status);
@@ -107,7 +142,7 @@ fn run_javadoc(
     }
 
     if let Some(target) = configuration.javadoc_target() {
-        package_javadocs(configuration, &output_dir, target, regexes)?;
+        package_javadocs(configuration, &output_dir, target, regexes, renderer)?;
     }
 
     Ok(())
@@ -172,6 +207,7 @@ fn package_javadocs(
     output_dir: &str,
     target: &str,
     regexes: &HashMap<&str, Regex>,
+    renderer: &mut dyn OutputRenderer,
 ) -> Result<(), String> {
     let target = resolve_filepath(target, configuration.environment(), regexes)?;
     let target_path = std::path::PathBuf::from(&target);
@@ -191,13 +227,7 @@ fn package_javadocs(
 
     match jar_command.output() {
         Ok(out) => {
-            if !out.stdout.is_empty() {
-                println!("{}", String::from_utf8_lossy(&out.stdout));
-            }
-
-            if !out.stderr.is_empty() {
-                println!("{}", String::from_utf8_lossy(&out.stderr));
-            }
+            output::log_process_output(renderer, &out.stdout, &out.stderr);
 
             if !out.status.success() {
                 exit_code::record_external_process_exit_code(out.status);
@@ -210,8 +240,15 @@ fn package_javadocs(
         Err(e) => return Err(format!("Failed to package javadocs: {e}")),
     }
 
-    println!("Successfully written javadoc target {target}");
+    renderer.log(&format!("Successfully written javadoc target {target}"));
     Ok(())
+}
+
+fn plural(count: usize) -> &'static str {
+    match count {
+        1 => "file",
+        _ => "files",
+    }
 }
 
 fn dependency_javadoc_links(project: &Project, configuration: &Configuration) -> Vec<String> {

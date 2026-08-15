@@ -89,7 +89,6 @@ pub fn resolve(
     };
 
     if path.exists() {
-        println!("Nothing to do");
         return resolve_cached_artifact(
             request.name,
             path,
@@ -99,7 +98,7 @@ pub fn resolve(
         );
     }
 
-    download::download(
+    download::download_silent(
         request.artifact_id.to_string(),
         target_url.clone(),
         filepath.clone(),

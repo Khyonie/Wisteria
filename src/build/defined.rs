@@ -2,18 +2,17 @@ use std::collections::HashMap;
 
 use toml::{Value, map::Map};
 
-use crate::build::task::TaskRunner;
+use crate::build::task::{TaskOutput, TaskRunner};
 use crate::model::{Configuration, Project, ProjectInfo};
 
 #[derive(Clone)]
 pub struct DefinedTask {
-    name: String,
     phases: HashMap<String, Vec<String>>,
     phase_order: Vec<String>,
 }
 
 impl DefinedTask {
-    pub fn new(name: &str, toml: &Map<String, Value>) -> Result<Self, String> {
+    pub fn new(_name: &str, toml: &Map<String, Value>) -> Result<Self, String> {
         let phases: HashMap<String, Vec<String>> = match toml.get("phase") {
             Some(t) if t.is_table() => {
                 let mut phases: HashMap<String, Vec<String>> = HashMap::new();
@@ -93,7 +92,6 @@ impl DefinedTask {
         };
 
         Ok(DefinedTask {
-            name: name.to_string(),
             phases,
             phase_order,
         })
@@ -106,22 +104,24 @@ impl TaskRunner for DefinedTask {
         _info: &ProjectInfo,
         _project: &Project,
         _configuration: &Configuration,
+        output: &mut TaskOutput<'_>,
     ) -> Result<(), String> {
-        println!("# Running task {}", self.name);
         for (index, phase) in self.phase_order.iter().enumerate() {
-            println!(
-                "[Phase {}/{}] Running phase {phase}",
-                index + 1,
-                self.phase_order.len()
-            );
+            let step = index + 1;
+            output.step_started("Running", phase, step);
             let phase_actions = match self.phases.get(phase) {
                 Some(a) => a,
-                None => return Err(format!("No phase \"{phase}\" has been defined")),
+                None => {
+                    let error = format!("No phase \"{phase}\" has been defined");
+                    output.step_failed("Running", phase, step, &error);
+                    return Err(error);
+                }
             };
 
             for _action in phase_actions {
                 // TODO Build a command from actions
             }
+            output.step_completed("Running", phase, step, "Done");
         }
 
         Ok(())

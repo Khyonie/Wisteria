@@ -4,16 +4,20 @@ use std::{
     process::exit,
 };
 
+use crate::cli::args::StartupFlags;
 use crate::cli::commands::dependencies::require_lockfile_or_exit;
 use crate::cli::commands::project_or_exit;
 use crate::dependency::Dependency;
 use crate::model::{Lockfile, LockfileArtifact, Project};
+use crate::output;
 use crate::util::consts;
 use crate::workspace::files;
 
-pub fn trigger_verify(project: Result<Project, String>, args: &[String]) {
+pub fn trigger_verify(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
+    let mut output = output::renderer(flags.output_mode);
+
     if args.len() > 2 {
-        println!(
+        output.log(
             "`wisteria verify` checks the whole project and does not accept dependency names.\nFix: run `wisteria verify` without additional arguments."
         );
         exit(1)
@@ -21,17 +25,31 @@ pub fn trigger_verify(project: Result<Project, String>, args: &[String]) {
 
     let project: Project = project_or_exit(project);
     let lockfile = require_lockfile_or_exit();
+
+    output.operation_started("verify", 1);
+    output.step_started("verify", "Checking", "project", 1, 1);
     let issues = verify_project_lockfile(&project, &lockfile);
 
     if !issues.is_empty() {
-        println!("Verification failed:");
+        let message = format!("{} {}", issues.len(), issue_label(issues.len()));
+        output.step_failed("verify", "Checking", "project", 1, 1, &message);
+        output.operation_completed("verify", "Verification finished with errors.");
+        output.log("Verification failed:");
         for issue in &issues {
-            println!("- {issue}");
+            output.log(&format!("- {issue}"));
         }
         exit(1)
     }
 
-    println!("Operation complete! project.toml, wisteria.lock, and the dependency cache agree.");
+    output.step_completed("verify", "Checking", "project", 1, 1, "No issues");
+    output.operation_completed("verify", "Verified project");
+}
+
+fn issue_label(count: usize) -> &'static str {
+    match count {
+        1 => "issue found",
+        _ => "issues found",
+    }
 }
 
 fn verify_project_lockfile(project: &Project, lockfile: &Lockfile) -> Vec<String> {

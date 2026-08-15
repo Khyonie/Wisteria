@@ -20,10 +20,10 @@ pub fn run() {
         Project::from_with_flags(flags.use_project.clone(), flags.clone());
 
     match command.as_str() {
-        "refresh" => commands::refresh::trigger_refresh(project),
-        "sync" => commands::sync::trigger_sync(project, &args),
-        "fetch" => commands::fetch::trigger_fetch(project, &args),
-        "verify" => commands::verify::trigger_verify(project, &args),
+        "refresh" => commands::refresh::trigger_refresh(project, &flags),
+        "sync" => commands::sync::trigger_sync(project, &args, &flags),
+        "fetch" => commands::fetch::trigger_fetch(project, &args, &flags),
+        "verify" => commands::verify::trigger_verify(project, &args, &flags),
         "update" if args.len() == 2 => {
             println!(
                 "Not enough arguments. Expected at least one argument, but none were supplied."
@@ -37,7 +37,7 @@ pub fn run() {
             );
             exit(1)
         }
-        "clean" => commands::clean::trigger_clean(project, &args),
+        "clean" => commands::clean::trigger_clean(project, &args, &flags),
         "new" | "create" if args.len() == 2 => exit(1),
         "new" | "create" => commands::create::trigger_create(&args, &flags),
         "info" => commands::info::trigger_info(project),
@@ -46,6 +46,6 @@ pub fn run() {
             exit(1)
         }
         "switch" => commands::switch::trigger_switch(project, &args, &flags),
-        _ => commands::task::trigger_task(project, &args),
+        _ => commands::task::trigger_task(project, &args, &flags),
     }
 }

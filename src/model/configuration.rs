@@ -826,6 +826,7 @@ mod tests {
         assert_eq!(
             build.phase_order(),
             &[
+                String::from("resolve"),
                 String::from("collect"),
                 String::from("compile"),
                 String::from("shade"),

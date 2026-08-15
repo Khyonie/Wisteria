@@ -1,5 +1,6 @@
 use std::process::exit;
 
+use crate::cli::args::StartupFlags;
 use crate::cli::commands::dependencies::{
     dependency_selection_or_exit, read_lockfile_or_exit, write_full_lockfile_artifacts_or_exit,
     write_partial_lockfile_artifacts_or_exit,
@@ -8,10 +9,11 @@ use crate::cli::commands::{configuration_or_exit, envvar_regexes, project_or_exi
 use crate::dependency::resolver::{ResolveContext, ResolvedDependency};
 use crate::dependency::{Dependency, UpdateContext};
 use crate::model::{Lockfile, LockfileArtifact, Metadata, Project};
+use crate::output::{self, OutputRenderer};
 use regex::Regex;
 use std::collections::HashMap;
 
-pub fn trigger_sync(project: Result<Project, String>, args: &[String]) {
+pub fn trigger_sync(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let project: Project = project_or_exit(project);
 
     let metadata = match Metadata::load() {
@@ -26,8 +28,10 @@ pub fn trigger_sync(project: Result<Project, String>, args: &[String]) {
     let regexes = envvar_regexes();
     let lockfile = read_lockfile_or_exit();
     let selection = dependency_selection_or_exit(&project, args, "sync", true);
+    let mut output = output::renderer(flags.output_mode);
 
     let result = sync_dependencies(
+        output.as_mut(),
         selection.names(),
         project.dependencies(),
         configuration.environment(),
@@ -36,11 +40,11 @@ pub fn trigger_sync(project: Result<Project, String>, args: &[String]) {
     );
 
     if !result.failed.is_empty() {
-        println!("Failed to sync one or more dependencies:");
+        output.log("Failed to sync one or more dependencies:");
         for (name, reason) in &result.failed {
-            println!("\t{name}: {reason}");
+            output.log(&format!("\t{name}: {reason}"));
         }
-        println!(
+        output.log(
             "Fix: run `wisteria fetch` if a lockfile already exists but cached artifacts are missing, or run `wisteria update all` to resolve and download dependencies."
         );
         exit(1)
@@ -55,8 +59,6 @@ pub fn trigger_sync(project: Result<Project, String>, args: &[String]) {
             selection.names(),
         );
     }
-
-    println!("Operation complete!");
 }
 
 struct SyncResult {
@@ -65,47 +67,57 @@ struct SyncResult {
 }
 
 fn sync_dependencies(
+    output: &mut dyn OutputRenderer,
     targets: &[String],
     dependencies: &HashMap<String, Dependency>,
     environment: &HashMap<String, String>,
     regexes: &HashMap<&str, Regex>,
     lockfile: Option<&Lockfile>,
 ) -> SyncResult {
-    let mut width: usize = usize::MIN;
-    for name in targets {
-        width = usize::max(name.len(), width);
-    }
-
-    width += 5;
-
     let mut artifacts = Vec::new();
     let mut failed = Vec::new();
     let size = targets.len();
+    output.operation_started("sync", size);
+
     for (index, target) in targets.iter().enumerate() {
+        let step = index + 1;
         let Some((name, dependency)) = dependencies.get_key_value(target) else {
-            println!("Usage of undeclared dependency \"{target}\"");
+            output.log(&format!("Usage of undeclared dependency \"{target}\""));
             continue;
         };
 
-        print!(
-            "({}/{size}) Resolving {:width$}",
-            index + 1,
-            format!("{name} ... ")
-        );
+        output.step_started("sync", "Resolving", name, step, size);
 
         match sync_dependency_artifacts(name, dependency, environment, regexes, lockfile) {
             Ok(mut dependency_artifacts) => {
-                println!("Done");
+                output.step_completed("sync", "Resolving", name, step, size, "Done");
                 artifacts.append(&mut dependency_artifacts);
             }
             Err(error) => {
-                println!("Failed");
+                output.step_failed("sync", "Resolving", name, step, size, &error);
                 failed.push((name.clone(), error));
             }
         }
     }
 
+    if failed.is_empty() {
+        output.operation_completed("sync", &sync_summary(targets.len()));
+    } else {
+        output.operation_completed("sync", "Sync finished with errors.");
+    }
+
     SyncResult { artifacts, failed }
+}
+
+fn sync_summary(count: usize) -> String {
+    format!("Synced {count} {}", dependency_label(count))
+}
+
+fn dependency_label(count: usize) -> &'static str {
+    match count {
+        1 => "dependency",
+        _ => "dependencies",
+    }
 }
 
 fn sync_dependency_artifacts(
@@ -277,8 +289,10 @@ mod tests {
             locked_artifact("stale", FETCH_URL),
         ]);
         let targets: Vec<String> = project.dependencies().keys().cloned().collect();
+        let mut output = crate::output::renderer(crate::output::OutputMode::Plain);
 
         let result = sync_dependencies(
+            output.as_mut(),
             &targets,
             project.dependencies(),
             &environment(),

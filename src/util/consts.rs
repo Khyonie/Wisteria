@@ -1,6 +1,8 @@
 use std::env::consts;
 
 pub const USAGE_TEXT: &str = r#"Usage: wisteria <(tasks...) | refresh | new | sync | fetch | verify | update | info | switch | migrate > 
+    --output <auto | plain | terminal | json>
+        Controls command output. JSON output is emitted as newline-delimited JSON events.
     (tasks...)
         Runs the specified tasks, in order, and at least one task must be given
 
@@ -74,11 +76,4 @@ pub fn java_seperator() -> char {
         "windows" => ';',
         _ => ':',
     }
-}
-
-pub fn print_action_header(message: &str, action: u32, total: u32) {
-    println!(
-        "────────────────────────────────────────🯝 {:^19} <{:>2}/{:<2}> 🯟────────────────────────────────────────",
-        message, action, total
-    );
 }

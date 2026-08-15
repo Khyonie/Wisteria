@@ -6,10 +6,12 @@ use crate::cli::commands::dependencies::{
     write_partial_lockfile_or_exit,
 };
 use crate::cli::commands::{
-    configuration_or_exit, envvar_regexes, project_or_exit, update_dependencies_with_context,
+    CommandOutput, configuration_or_exit, envvar_regexes, project_or_exit,
+    update_dependencies_with_context,
 };
 use crate::dependency::UpdateContext;
 use crate::model::{Metadata, Project};
+use crate::output;
 use crate::workspace::refresh::refresh;
 
 pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
@@ -28,8 +30,10 @@ pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: 
     let lockfile = read_lockfile_or_exit();
     let mut refresh_failed = false;
     let selection = dependency_selection_or_exit(&project, args, "update", false);
+    let mut output = output::renderer(flags.output_mode);
 
     let result = update_dependencies_with_context(
+        CommandOutput::new(output.as_mut(), "update"),
         selection.names(),
         project.dependencies(),
         configuration.environment(),
@@ -39,9 +43,9 @@ pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: 
     );
 
     if !result.failed.is_empty() {
-        println!("Failed to resolve one or more dependencies:");
+        output.log("Failed to resolve one or more dependencies:");
         for (name, reason) in &result.failed {
-            println!("\t{name}: {reason}");
+            output.log(&format!("\t{name}: {reason}"));
         }
 
         exit(1)
@@ -54,20 +58,21 @@ pub fn trigger_update(project: Result<Project, String>, args: &[String], flags: 
     }
 
     if !flags.no_refresh
-        && let Err((nature, error)) = refresh(&project, configuration, &regexes)
+        && let Err((nature, error)) = refresh(&project, configuration, &regexes, output.as_mut())
     {
-        println!("Failed to refresh nature {}: {error}", nature.type_str());
+        output.log(&format!(
+            "Failed to refresh nature {}: {error}",
+            nature.type_str()
+        ));
         refresh_failed = true
     }
 
     if refresh_failed {
         if selection.all_dependencies() {
-            println!("Dependencies updated, however project might be in a degraded state.");
+            output.log("Dependencies updated, however project might be in a degraded state.");
         } else {
-            println!("Dependency updated, however project might be in a degraded state.");
+            output.log("Dependency updated, however project might be in a degraded state.");
         }
         exit(1)
     }
-
-    println!("Operation complete!");
 }

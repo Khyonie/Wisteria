@@ -4,7 +4,7 @@ use regex::Regex;
 
 use crate::{
     model::{Configuration, Project},
-    util::consts::print_action_header,
+    output::OutputRenderer,
     workspace::nature::Nature,
 };
 
@@ -12,44 +12,77 @@ pub(crate) fn refresh(
     project: &Project,
     configuration: &Configuration,
     regexes: &HashMap<&str, Regex>,
+    output: &mut dyn OutputRenderer,
 ) -> Result<(), (Nature, String)> {
-    print_action_header("Removing natures", 1, 2);
-    for nature in Nature::values() {
-        print!("> Removing project nature \"{}\" ... ", nature.type_str());
-        nature.remove_nature().map_err(|e| (nature, e))?;
+    let removable_natures = Nature::values();
+    let total = removable_natures.len() + project.info().natures().len();
+    let mut step = 1;
 
-        println!("Done!");
+    output.operation_started("refresh", total);
+    for nature in removable_natures {
+        let item = format!("{} nature", nature.type_str());
+        output.step_started("refresh", "Removing", &item, step, total);
+
+        if let Err(error) = nature.remove_nature() {
+            output.step_failed("refresh", "Removing", &item, step, total, &error);
+            output.operation_completed("refresh", "Refresh finished with errors.");
+            return Err((nature, error));
+        }
+
+        output.step_completed("refresh", "Removing", &item, step, total, "Done");
+        step += 1;
     }
-    println!("Done!");
 
-    print_action_header("Applying natures", 2, 2);
     for nature in project.info().natures() {
-        print!("> Applying project nature \"{}\"... ", nature.type_str());
+        let item = format!("{} nature", nature.type_str());
+        output.step_started("refresh", "Applying", &item, step, total);
+
         if let Err(e) = nature.setup_nature(project, configuration, regexes) {
-            println!("Failed: {e}");
-            print!(
-                "Deleting project nature \"{}\" for project cleanliness ... ",
+            output.step_failed("refresh", "Applying", &item, step, total, &e);
+            output.log(&format!(
+                "Removing incomplete {} nature for project cleanliness.",
                 nature.type_str()
-            );
+            ));
 
             match nature.remove_nature() {
-                Ok(_) => println!("Done."),
-                Err(e) => {
-                    println!("Failed: {e}, you may have to clean the project manually.")
-                }
+                Ok(_) => output.log("Removed incomplete nature."),
+                Err(error) => output.log(&format!(
+                    "Could not remove incomplete nature: {error}. You may have to clean the project manually."
+                )),
             }
+            output.operation_completed("refresh", "Refresh finished with errors.");
             return Err((nature.clone(), e));
         }
-        println!("Done!");
+
+        output.step_completed("refresh", "Applying", &item, step, total, "Done");
+        step += 1;
     }
 
+    output.operation_completed(
+        "refresh",
+        &format!(
+            "Refreshed {} configured {}",
+            project.info().natures().len(),
+            nature_label(project.info().natures().len())
+        ),
+    );
     Ok(())
+}
+
+fn nature_label(count: usize) -> &'static str {
+    match count {
+        1 => "nature",
+        _ => "natures",
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{TempDir, with_current_dir};
+    use crate::{
+        output::{self, OutputMode},
+        test_support::{TempDir, with_current_dir},
+    };
     use std::fs;
 
     fn regexes() -> HashMap<&'static str, Regex> {
@@ -87,7 +120,10 @@ mod tests {
         let configuration = project.info().configurations().get("main").unwrap();
 
         with_current_dir(temp.path(), || {
-            if let Err((nature, error)) = refresh(&project, configuration, &regexes()) {
+            let mut output = output::renderer(OutputMode::Plain);
+            if let Err((nature, error)) =
+                refresh(&project, configuration, &regexes(), output.as_mut())
+            {
                 panic!(
                     "expected refresh to succeed for {}: {error}",
                     nature.type_str()
