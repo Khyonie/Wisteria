@@ -3,12 +3,15 @@ use std::{
     path::Path,
 };
 
+use crate::util::git;
+
 pub const GIT_DIRECTORY: &str = ".git";
 pub const GIT_IGNORE: &str = ".gitignore";
 pub const GIT_IGNORE_CONTENTS: &str = ".wisteria"; // Ignore wisteria file by default
 
 pub const GIT_HEAD_PATH: &str = "HEAD";
-pub const HEAD_CONTENTS: &str = "ref: refs/heads/master\n";
+pub const HEAD_CONTENTS: &str = "ref: refs/heads";
+pub const DEFAULT_BRANCH_NAME: &str = "master";
 
 pub const GIT_OBJECTS_INFO: &str = "objects/info";
 pub const GIT_OBJECTS_PACK: &str = "objects/pack";
@@ -35,7 +38,9 @@ pub fn initialize_git_repository(project_path: &Path) -> Result<(), String> {
     fs::create_dir_all(git_path.join(GIT_REFS_TAGS)).map_err(|e| e.to_string())?;
 
     // Files
-    fs::write(git_path.join(GIT_HEAD_PATH), HEAD_CONTENTS).map_err(|e| e.to_string())?;
+    let branch_name = git::get_global_config_setting("init.defaultBranch")
+        .unwrap_or(String::from(DEFAULT_BRANCH_NAME));
+    fs::write(git_path.join(GIT_HEAD_PATH), format!("{HEAD_CONTENTS}/{branch_name}\n")).map_err(|e| e.to_string())?;
     fs::write(git_path.join(GIT_CONFIG_PATH), GIT_CONFIG_CONTENTS).map_err(|e| e.to_string())?;
 
     // Gitignore
