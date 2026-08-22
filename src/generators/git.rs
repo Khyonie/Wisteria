@@ -38,11 +38,9 @@ pub fn initialize_git_repository(project_path: &Path) -> Result<(), String> {
     fs::create_dir_all(git_path.join(GIT_REFS_TAGS)).map_err(|e| e.to_string())?;
 
     // Files
-    let branch_name = git::get_global_config_setting("init.defaultBranch")
-        .unwrap_or(String::from(DEFAULT_BRANCH_NAME));
     fs::write(
         git_path.join(GIT_HEAD_PATH),
-        format!("{HEAD_CONTENTS}/{branch_name}\n"),
+        head_contents_for_branch(&git::configured_default_branch_name(DEFAULT_BRANCH_NAME)?),
     )
     .map_err(|e| e.to_string())?;
     fs::write(git_path.join(GIT_CONFIG_PATH), GIT_CONFIG_CONTENTS).map_err(|e| e.to_string())?;
@@ -51,4 +49,21 @@ pub fn initialize_git_repository(project_path: &Path) -> Result<(), String> {
     fs::write(project_path.join(GIT_IGNORE), GIT_IGNORE_CONTENTS).map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+fn head_contents_for_branch(branch_name: &str) -> String {
+    format!("{HEAD_CONTENTS}/{branch_name}\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn head_contents_for_branch_uses_single_trailing_newline() {
+        assert_eq!(
+            head_contents_for_branch("main"),
+            String::from("ref: refs/heads/main\n")
+        );
+    }
 }
