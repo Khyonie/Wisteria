@@ -40,7 +40,11 @@ pub fn initialize_git_repository(project_path: &Path) -> Result<(), String> {
     // Files
     let branch_name = git::get_global_config_setting("init.defaultBranch")
         .unwrap_or(String::from(DEFAULT_BRANCH_NAME));
-    fs::write(git_path.join(GIT_HEAD_PATH), format!("{HEAD_CONTENTS}/{branch_name}\n")).map_err(|e| e.to_string())?;
+    fs::write(
+        git_path.join(GIT_HEAD_PATH),
+        format!("{HEAD_CONTENTS}/{branch_name}\n"),
+    )
+    .map_err(|e| e.to_string())?;
     fs::write(git_path.join(GIT_CONFIG_PATH), GIT_CONFIG_CONTENTS).map_err(|e| e.to_string())?;
 
     // Gitignore
