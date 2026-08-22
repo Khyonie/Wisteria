@@ -3,6 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use regex::Regex;
 
 use crate::{
+    dependency::reference::{DependencyReference, DependencyScope},
     dependency::resolver::ResolveContext,
     model::lockfile::try_read_lockfile,
     model::{Configuration, Project},
@@ -10,15 +11,42 @@ use crate::{
     util::consts,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClasspathView {
+    MainCompile,
+    MainRuntime,
+    PackageRuntime,
+    TestCompile,
+    TestRuntime,
+}
+
+#[derive(Debug)]
 pub struct ResolvedDependencies {
-    paths: Vec<PathBuf>,
+    main_compile_paths: Vec<PathBuf>,
+    main_runtime_paths: Vec<PathBuf>,
+    package_runtime_paths: Vec<PathBuf>,
+    test_compile_paths: Vec<PathBuf>,
+    test_runtime_paths: Vec<PathBuf>,
     shaded_jars: Vec<PathBuf>,
-    classpath: Option<String>,
 }
 
 impl ResolvedDependencies {
+    pub fn paths_for(&self, view: ClasspathView) -> &[PathBuf] {
+        match view {
+            ClasspathView::MainCompile => &self.main_compile_paths,
+            ClasspathView::MainRuntime => &self.main_runtime_paths,
+            ClasspathView::PackageRuntime => &self.package_runtime_paths,
+            ClasspathView::TestCompile => &self.test_compile_paths,
+            ClasspathView::TestRuntime => &self.test_runtime_paths,
+        }
+    }
+
+    pub fn classpath_for(&self, view: ClasspathView) -> Option<String> {
+        join_classpath(self.paths_for(view))
+    }
+
     pub fn paths(&self) -> &[PathBuf] {
-        &self.paths
+        self.paths_for(ClasspathView::PackageRuntime)
     }
 
     pub fn shaded_jars(&self) -> &[PathBuf] {
@@ -26,7 +54,7 @@ impl ResolvedDependencies {
     }
 
     pub fn classpath(&self) -> Option<String> {
-        self.classpath.clone()
+        self.classpath_for(ClasspathView::MainCompile)
     }
 }
 
@@ -35,10 +63,26 @@ pub(crate) fn resolve_dependencies(
     configuration: &Configuration,
     regexes: &HashMap<&str, Regex>,
 ) -> Result<ResolvedDependencies, String> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-    let mut compile_paths: Vec<PathBuf> = Vec::new();
+    resolve_dependencies_for_views(
+        project,
+        configuration,
+        regexes,
+        &[ClasspathView::MainCompile, ClasspathView::PackageRuntime],
+    )
+}
+
+pub(crate) fn resolve_dependencies_for_views(
+    project: &Project,
+    configuration: &Configuration,
+    regexes: &HashMap<&str, Regex>,
+    views: &[ClasspathView],
+) -> Result<ResolvedDependencies, String> {
+    let mut main_compile_paths: Vec<PathBuf> = Vec::new();
+    let mut main_runtime_paths: Vec<PathBuf> = Vec::new();
+    let mut package_runtime_paths: Vec<PathBuf> = Vec::new();
+    let mut test_compile_paths: Vec<PathBuf> = Vec::new();
+    let mut test_runtime_paths: Vec<PathBuf> = Vec::new();
     let mut shaded_jars: Vec<PathBuf> = Vec::new();
-    let mut classpath: Option<String> = None;
     let lockfile = try_read_lockfile()?;
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
@@ -52,7 +96,7 @@ pub(crate) fn resolve_dependencies(
                 continue;
             };
 
-            if reference.scope().is_test_only() {
+            if !is_needed_for_views(reference, views) {
                 continue;
             }
 
@@ -74,16 +118,22 @@ pub(crate) fn resolve_dependencies(
                     }
                 };
 
-                if reference.is_shaded() {
+                if should_shade(reference, views) {
                     shaded_jars.extend(updated.paths().cloned());
                 }
 
-                if reference.scope().is_on_compile_classpath() {
-                    compile_paths.extend(updated.paths().cloned());
-                }
-
-                if reference.scope().is_on_runtime_classpath() && !reference.is_shaded() {
-                    paths.extend(updated.paths().cloned());
+                for view in views {
+                    if view.includes(reference) {
+                        paths_for_view_mut(
+                            *view,
+                            &mut main_compile_paths,
+                            &mut main_runtime_paths,
+                            &mut package_runtime_paths,
+                            &mut test_compile_paths,
+                            &mut test_runtime_paths,
+                        )
+                        .extend(updated.paths().cloned());
+                    }
                 }
             }
         }
@@ -91,24 +141,90 @@ pub(crate) fn resolve_dependencies(
         if !failed_downloads.is_empty() {
             return Err(format_failed_dependencies(failed_downloads));
         }
-
-        let mut buffer: String = String::new();
-        for dep in &compile_paths {
-            buffer.push_str(&dep.to_string_lossy());
-            buffer.push(consts::java_seperator());
-        }
-
-        if !buffer.is_empty() {
-            buffer.pop();
-            classpath = Some(buffer);
-        }
     }
 
     Ok(ResolvedDependencies {
-        paths,
+        main_compile_paths,
+        main_runtime_paths,
+        package_runtime_paths,
+        test_compile_paths,
+        test_runtime_paths,
         shaded_jars,
-        classpath,
     })
+}
+
+impl ClasspathView {
+    fn includes(self, reference: &DependencyReference) -> bool {
+        match self {
+            Self::MainCompile => matches!(
+                reference.scope(),
+                DependencyScope::Compile | DependencyScope::Provided
+            ),
+            Self::MainRuntime => matches!(
+                reference.scope(),
+                DependencyScope::Compile | DependencyScope::Runtime
+            ),
+            Self::PackageRuntime => {
+                matches!(
+                    reference.scope(),
+                    DependencyScope::Compile | DependencyScope::Runtime
+                ) && !reference.is_shaded()
+            }
+            Self::TestCompile => matches!(
+                reference.scope(),
+                DependencyScope::Compile | DependencyScope::Provided | DependencyScope::Test
+            ),
+            Self::TestRuntime => matches!(
+                reference.scope(),
+                DependencyScope::Compile
+                    | DependencyScope::Provided
+                    | DependencyScope::Runtime
+                    | DependencyScope::Test
+            ),
+        }
+    }
+}
+
+fn is_needed_for_views(reference: &DependencyReference, views: &[ClasspathView]) -> bool {
+    views.iter().any(|view| view.includes(reference)) || should_shade(reference, views)
+}
+
+fn should_shade(reference: &DependencyReference, views: &[ClasspathView]) -> bool {
+    views.contains(&ClasspathView::PackageRuntime)
+        && reference.is_shaded()
+        && !reference.scope().is_test_only()
+}
+
+fn paths_for_view_mut<'a>(
+    view: ClasspathView,
+    main_compile_paths: &'a mut Vec<PathBuf>,
+    main_runtime_paths: &'a mut Vec<PathBuf>,
+    package_runtime_paths: &'a mut Vec<PathBuf>,
+    test_compile_paths: &'a mut Vec<PathBuf>,
+    test_runtime_paths: &'a mut Vec<PathBuf>,
+) -> &'a mut Vec<PathBuf> {
+    match view {
+        ClasspathView::MainCompile => main_compile_paths,
+        ClasspathView::MainRuntime => main_runtime_paths,
+        ClasspathView::PackageRuntime => package_runtime_paths,
+        ClasspathView::TestCompile => test_compile_paths,
+        ClasspathView::TestRuntime => test_runtime_paths,
+    }
+}
+
+fn join_classpath(paths: &[PathBuf]) -> Option<String> {
+    let mut buffer = String::new();
+    for path in paths {
+        buffer.push_str(&path.to_string_lossy());
+        buffer.push(consts::java_seperator());
+    }
+
+    if buffer.is_empty() {
+        return None;
+    }
+
+    buffer.pop();
+    Some(buffer)
 }
 
 fn format_failed_dependencies(failed_downloads: Vec<(String, String)>) -> String {
@@ -143,6 +259,22 @@ mod tests {
 
     fn contains_path(paths: &[PathBuf], path: &PathBuf) -> bool {
         paths.iter().any(|candidate| candidate == path)
+    }
+
+    fn assert_contains(paths: &[PathBuf], path: &PathBuf) {
+        assert!(
+            contains_path(paths, path),
+            "expected {} in {paths:?}",
+            path.display()
+        );
+    }
+
+    fn assert_excludes(paths: &[PathBuf], path: &PathBuf) {
+        assert!(
+            !contains_path(paths, path),
+            "did not expect {} in {paths:?}",
+            path.display()
+        );
     }
 
     #[test]
@@ -194,25 +326,121 @@ mod tests {
 
         let project = Project::from(Some(project_file.to_string_lossy().to_string())).unwrap();
         let configuration = project.info().configurations().get("main").unwrap();
-        let resolved = resolve_dependencies(&project, configuration, &regexes()).unwrap();
+        let resolved = resolve_dependencies_for_views(
+            &project,
+            configuration,
+            &regexes(),
+            &[
+                ClasspathView::MainCompile,
+                ClasspathView::MainRuntime,
+                ClasspathView::PackageRuntime,
+                ClasspathView::TestCompile,
+                ClasspathView::TestRuntime,
+            ],
+        )
+        .unwrap();
         let compile = compile.canonicalize().unwrap();
         let provided = provided.canonicalize().unwrap();
         let runtime = runtime.canonicalize().unwrap();
         let shaded = shaded.canonicalize().unwrap();
         let test = test.canonicalize().unwrap();
-        let classpath = resolved.classpath().unwrap();
+        let main_compile_classpath = resolved.classpath_for(ClasspathView::MainCompile).unwrap();
 
-        assert!(classpath.contains(&compile.to_string_lossy().to_string()));
-        assert!(classpath.contains(&provided.to_string_lossy().to_string()));
-        assert!(classpath.contains(&shaded.to_string_lossy().to_string()));
-        assert!(!classpath.contains(&runtime.to_string_lossy().to_string()));
-        assert!(!classpath.contains(&test.to_string_lossy().to_string()));
+        assert!(main_compile_classpath.contains(&compile.to_string_lossy().to_string()));
+        assert!(main_compile_classpath.contains(&provided.to_string_lossy().to_string()));
+        assert!(main_compile_classpath.contains(&shaded.to_string_lossy().to_string()));
+        assert!(!main_compile_classpath.contains(&runtime.to_string_lossy().to_string()));
+        assert!(!main_compile_classpath.contains(&test.to_string_lossy().to_string()));
 
-        assert!(contains_path(resolved.paths(), &compile));
-        assert!(contains_path(resolved.paths(), &runtime));
-        assert!(!contains_path(resolved.paths(), &provided));
-        assert!(!contains_path(resolved.paths(), &shaded));
-        assert!(!contains_path(resolved.paths(), &test));
+        let main_compile = resolved.paths_for(ClasspathView::MainCompile);
+        assert_contains(main_compile, &compile);
+        assert_contains(main_compile, &provided);
+        assert_contains(main_compile, &shaded);
+        assert_excludes(main_compile, &runtime);
+        assert_excludes(main_compile, &test);
+
+        let main_runtime = resolved.paths_for(ClasspathView::MainRuntime);
+        assert_contains(main_runtime, &compile);
+        assert_contains(main_runtime, &runtime);
+        assert_contains(main_runtime, &shaded);
+        assert_excludes(main_runtime, &provided);
+        assert_excludes(main_runtime, &test);
+
+        let package_runtime = resolved.paths_for(ClasspathView::PackageRuntime);
+        assert_contains(package_runtime, &compile);
+        assert_contains(package_runtime, &runtime);
+        assert_excludes(package_runtime, &provided);
+        assert_excludes(package_runtime, &shaded);
+        assert_excludes(package_runtime, &test);
+
+        let test_compile = resolved.paths_for(ClasspathView::TestCompile);
+        assert_contains(test_compile, &compile);
+        assert_contains(test_compile, &provided);
+        assert_contains(test_compile, &shaded);
+        assert_contains(test_compile, &test);
+        assert_excludes(test_compile, &runtime);
+
+        let test_runtime = resolved.paths_for(ClasspathView::TestRuntime);
+        assert_contains(test_runtime, &compile);
+        assert_contains(test_runtime, &provided);
+        assert_contains(test_runtime, &runtime);
+        assert_contains(test_runtime, &shaded);
+        assert_contains(test_runtime, &test);
+
+        assert_eq!(resolved.paths(), package_runtime);
+        assert_eq!(
+            resolved.classpath(),
+            resolved.classpath_for(ClasspathView::MainCompile)
+        );
         assert_eq!(resolved.shaded_jars(), &[shaded]);
+    }
+
+    #[test]
+    fn default_dependency_resolution_skips_test_only_dependencies() {
+        let temp = TempDir::new("resolve-skip-test-dependencies");
+        let compile = temp.path().join("compile.jar");
+        let missing_test = temp.path().join("missing-test.jar");
+        fs::write(&compile, "").unwrap();
+
+        let project_file = temp.path().join("project.toml");
+        fs::write(
+            &project_file,
+            format!(
+                r#"
+                [project]
+                name = "Demo"
+                version = "1.0.0"
+                description = "Demo"
+
+                [dependencies.archive]
+                compile_dep = {{ path = "{}" }}
+                test_dep = {{ path = "{}" }}
+
+                [configuration.main]
+                dependencies = [
+                    {{ name = "compile_dep", scope = "compile" }},
+                    {{ name = "test_dep", scope = "test" }},
+                ]
+                "#,
+                compile.display(),
+                missing_test.display(),
+            ),
+        )
+        .unwrap();
+
+        let project = Project::from(Some(project_file.to_string_lossy().to_string())).unwrap();
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        resolve_dependencies(&project, configuration, &regexes()).unwrap();
+        let error = resolve_dependencies_for_views(
+            &project,
+            configuration,
+            &regexes(),
+            &[ClasspathView::TestCompile],
+        )
+        .unwrap_err();
+
+        assert!(error.contains("test_dep"));
+        assert!(error.contains("does not exist"));
     }
 }
