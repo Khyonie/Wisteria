@@ -1,0 +1,73 @@
+#══════════════════════════════════════════════════════════════════════════════════════════════════ 
+# Schema 4
+#
+# TEST PLATFORM INTEGRATION
+# Configurations may now define a test platform and runner. This would permit a new implicit task,
+# which requires a runner and a launcher to be specified. 
+#
+# The runner is a named rust enum, such as "junit-platform", and the launcher is a declared
+# dependency.
+#
+#══════════════════════════════════════════════════════════════════════════════════════════════════ 
+
+[project]
+name = "Wisteria"
+description = "Project description."
+version = "0.1.0"
+natures = [ "eclipse", "maven" ]
+authors = [ "Khyonie", "AnotherAuthor" ]
+sourcepage = "https://github.com/Khyonie/Wisteria"
+
+# Dependencies
+#────────────────────────────────────────────────────────────────────────────────
+[dependencies.archive]
+file-dep = { path = "lib/Archive.jar" }
+
+[dependencies.folder]
+folder-dep = { path = "lib/", recursive = true }
+
+[dependencies.url]
+url-dep = { url = "https://libs.example.com/Example.jar" }
+
+[dependencies.maven]
+maven-dep = { group_id = "com.google.code.gson", artifact_id = "gson" }
+junit = { group_id = "org.junit.platform", artifact_id = "junit-platform-console-standalone" }
+
+[dependencies.github]
+github-dep = { repository = "Example/ExampleLib" }
+
+# Configurations
+#────────────────────────────────────────────────────────────────────────────────
+[configuration.main]
+sources = [ "src/main/" ]
+targets = [ "outputs/{configuration}-{version}/{project_name}.jar" ]
+dependencies = [
+	"folder-dep",
+	{ name = "url-dep" },
+	{ name = "maven-dep", scope = "test" },
+	{ name = "github-dep", scope = "provided" },
+	{ name = "file-dep", scope = "compile", package = "shade" },
+]
+includes = [ "default-config.toml" ]
+entry = "com.example.wisteria.App"
+java_version = 17
+
+[configuration.main.javadoc]
+output_dir = "outputs/{configuration}-{version}-javadoc/"
+target = "outputs/{configuration}-{version}/{project-name}-javadoc"
+
+[configuration.main.compiler_flags]
+release_target = 17
+enable_preview_features = true
+javadoc_all_lints = true
+source_all_lints = true
+no_warnings = true
+deprecation_info = true
+store_parameter_names = true
+source_encoding = "utf8"
+
+[configuration.main.test]
+sources = [ "src/test/" ]
+runner = "junit-platform"
+launcher = "junit"
+reports = "target/test-results/{configuration}/"
