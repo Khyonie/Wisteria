@@ -8,6 +8,7 @@ pub mod run;
 pub mod shade;
 pub mod sources;
 pub mod task;
+pub mod test;
 
 use crate::{
     model::{Configuration, Project},

@@ -20,12 +20,7 @@ const VALID_CLEAN_TARGETS: &str =
 pub fn trigger_clean(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let mut output = output::renderer(flags.output_mode);
     let result = match args[2].to_lowercase().as_str() {
-        "classes" => clean_single_directory(
-            output.as_mut(),
-            "classes",
-            consts::BINARY_OUT_PATH,
-            "Could not remove classes folder",
-        ),
+        "classes" => clean_class_directories(output.as_mut()),
         "dependencies" => clean_single_directory(
             output.as_mut(),
             "dependency cache",
@@ -68,18 +63,11 @@ fn clean_all(
 ) -> Result<String, String> {
     let paths = resolve_clean_paths_or_report(project, true, true, output)?;
     let paths = unique_paths(paths);
-    let total = 2 + clean_path_steps(&paths) + 1 + Nature::values().len();
+    let total = 3 + clean_path_steps(&paths) + 1 + Nature::values().len();
     let mut step = 1;
 
     output.operation_started("clean", total);
-    clean_directory(
-        output,
-        &mut step,
-        total,
-        "classes",
-        consts::BINARY_OUT_PATH,
-        "Could not remove classes folder",
-    )?;
+    clean_classes(output, &mut step, total)?;
     clean_directory(
         output,
         &mut step,
@@ -241,6 +229,39 @@ fn clean_single_directory(
     clean_directory(output, &mut step, total, item, path, error_prefix)?;
 
     Ok(format!("Cleaned {item}"))
+}
+
+fn clean_class_directories(output: &mut dyn OutputRenderer) -> Result<String, String> {
+    let total = 2;
+    let mut step = 1;
+
+    output.operation_started("clean", total);
+    clean_classes(output, &mut step, total)?;
+
+    Ok(String::from("Cleaned classes"))
+}
+
+fn clean_classes(
+    output: &mut dyn OutputRenderer,
+    step: &mut usize,
+    total: usize,
+) -> Result<(), String> {
+    clean_directory(
+        output,
+        step,
+        total,
+        "classes",
+        consts::BINARY_OUT_PATH,
+        "Could not remove classes folder",
+    )?;
+    clean_directory(
+        output,
+        step,
+        total,
+        "test classes",
+        consts::TEST_BINARY_OUT_PATH,
+        "Could not remove test classes folder",
+    )
 }
 
 fn clean_directory(

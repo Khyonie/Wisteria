@@ -56,6 +56,7 @@ fn task_summary(task: &str) -> String {
         "build" => String::from("Built project"),
         "javadocs" | "javadoc" => String::from("Generated javadocs"),
         "run" => String::from("Finished run task"),
+        "test" => String::from("Tested project"),
         task => format!("Completed task \"{task}\""),
     }
 }

@@ -28,6 +28,7 @@ pub struct ResolvedDependencies {
     test_compile_paths: Vec<PathBuf>,
     test_runtime_paths: Vec<PathBuf>,
     shaded_jars: Vec<PathBuf>,
+    paths_by_dependency: HashMap<String, Vec<PathBuf>>,
 }
 
 impl ResolvedDependencies {
@@ -51,6 +52,10 @@ impl ResolvedDependencies {
 
     pub fn shaded_jars(&self) -> &[PathBuf] {
         &self.shaded_jars
+    }
+
+    pub fn paths_for_dependency(&self, name: &str) -> Option<&[PathBuf]> {
+        self.paths_by_dependency.get(name).map(Vec::as_slice)
     }
 
     pub fn classpath(&self) -> Option<String> {
@@ -83,6 +88,7 @@ pub(crate) fn resolve_dependencies_for_views(
     let mut test_compile_paths: Vec<PathBuf> = Vec::new();
     let mut test_runtime_paths: Vec<PathBuf> = Vec::new();
     let mut shaded_jars: Vec<PathBuf> = Vec::new();
+    let mut paths_by_dependency: HashMap<String, Vec<PathBuf>> = HashMap::new();
     let lockfile = try_read_lockfile()?;
 
     let mut failed_downloads: Vec<(String, String)> = Vec::new();
@@ -122,6 +128,8 @@ pub(crate) fn resolve_dependencies_for_views(
                     shaded_jars.extend(updated.paths().cloned());
                 }
 
+                paths_by_dependency.insert(name.clone(), updated.paths().cloned().collect());
+
                 for view in views {
                     if view.includes(reference) {
                         paths_for_view_mut(
@@ -150,6 +158,7 @@ pub(crate) fn resolve_dependencies_for_views(
         test_compile_paths,
         test_runtime_paths,
         shaded_jars,
+        paths_by_dependency,
     })
 }
 

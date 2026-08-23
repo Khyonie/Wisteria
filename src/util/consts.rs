@@ -51,6 +51,8 @@ pub const CACHE_PATH: &str = ".wisteria/cache";
 pub const WORK_DIR: &str = ".wisteria/work";
 pub const SOURCE_OUT_PATH: &str = ".wisteria/work/src";
 pub const BINARY_OUT_PATH: &str = ".wisteria/work/bin";
+pub const TEST_SOURCE_OUT_PATH: &str = ".wisteria/work/test-src";
+pub const TEST_BINARY_OUT_PATH: &str = ".wisteria/work/test-bin";
 pub const SHADED_OUT_PATH: &str = ".wisteria/work/shaded";
 pub const TARGET_JAR_PATH: &str = ".wisteria/work/target.jar";
 pub const MANIFEST_DIR: &str = ".wisteria/work/bin/META-INF";
@@ -60,6 +62,7 @@ pub const PROJECT_SOURCE_DIR: &str = "src";
 pub const LEGACY_PROJECT_LIBRARY_DIR: &str = "lib";
 
 pub const DEFAULT_JAVADOC_DIR: &str = "target/javadoc/{configuration}/";
+pub const DEFAULT_TEST_REPORTS_DIR: &str = "target/test-results/{configuration}/";
 
 pub const ECLIPSE_SETTINGS_DIR: &str = ".settings";
 pub const ECLIPSE_JDT_PREFS_FILE: &str = ".settings/org.eclipse.jdt.core.prefs";
