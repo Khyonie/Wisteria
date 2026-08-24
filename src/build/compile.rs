@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{fs, process::Command};
 
 use crate::{
     model::Configuration,
@@ -12,9 +12,31 @@ pub fn compile_sources(
     classpath: Option<&str>,
     renderer: &mut dyn OutputRenderer,
 ) -> Result<(), String> {
+    compile_sources_to(
+        configuration,
+        copied_files,
+        classpath,
+        consts::SOURCE_OUT_PATH,
+        consts::BINARY_OUT_PATH,
+        renderer,
+    )
+}
+
+pub fn compile_sources_to(
+    configuration: &Configuration,
+    copied_files: Vec<String>,
+    classpath: Option<&str>,
+    source_path: &str,
+    binary_path: &str,
+    renderer: &mut dyn OutputRenderer,
+) -> Result<(), String> {
+    fs::create_dir_all(binary_path).map_err(|e| {
+        format!("Failed to create Java class output directory \"{binary_path}\": {e}")
+    })?;
+
     let mut javac_command: Command = Command::new("javac");
-    javac_command.args(["-d", consts::BINARY_OUT_PATH]);
-    javac_command.args(["--source-path", consts::SOURCE_OUT_PATH]);
+    javac_command.args(["-d", binary_path]);
+    javac_command.args(["--source-path", source_path]);
 
     if let Some(deps) = classpath {
         javac_command.args(["--class-path", deps]);

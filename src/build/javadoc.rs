@@ -4,7 +4,7 @@ use regex::Regex;
 
 use crate::{
     build::{
-        resolve::{ResolvedDependencies, resolve_dependencies},
+        resolve::{ClasspathView, ResolvedDependencies, resolve_dependencies_for_views},
         sources,
         task::TaskOutput,
     },
@@ -71,7 +71,12 @@ impl TaskRunner for ImplicitJavadocTask {
         };
 
         output.step_started("Resolving", "dependencies", 2);
-        let dependencies = match resolve_dependencies(project, configuration, &regexes) {
+        let dependencies = match resolve_dependencies_for_views(
+            project,
+            configuration,
+            &regexes,
+            &[ClasspathView::MainCompile],
+        ) {
             Ok(dependencies) => {
                 output.step_completed("Resolving", "dependencies", 2, "Done");
                 dependencies

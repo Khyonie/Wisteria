@@ -7,7 +7,6 @@ use std::{
 
 use crate::{
     cli::{args::StartupFlags, commands::envvar_regexes},
-    generators::generate_metadata,
     model::{Configuration, Metadata, Project},
     output::{self, OutputRenderer},
     util::consts,
@@ -15,17 +14,12 @@ use crate::{
 };
 
 const VALID_CLEAN_TARGETS: &str =
-    "[ classes, dependencies, targets, javadocs, metadata, natures, all ]";
+    "[ classes, dependencies, targets, javadocs, tests, metadata, natures, all ]";
 
 pub fn trigger_clean(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let mut output = output::renderer(flags.output_mode);
     let result = match args[2].to_lowercase().as_str() {
-        "classes" => clean_single_directory(
-            output.as_mut(),
-            "classes",
-            consts::BINARY_OUT_PATH,
-            "Could not remove classes folder",
-        ),
+        "classes" => clean_class_directories(output.as_mut()),
         "dependencies" => clean_single_directory(
             output.as_mut(),
             "dependency cache",
@@ -34,6 +28,7 @@ pub fn trigger_clean(project: Result<Project, String>, args: &[String], flags: &
         ),
         "targets" | "jars" | "jar" => clean_configuration_targets(project, output.as_mut()),
         "javadocs" | "javadoc" => clean_configuration_javadocs(project, output.as_mut()),
+        "tests" | "test" => clean_configuration_tests(project, output.as_mut()),
         "metadata" => clean_single_metadata(output.as_mut()),
         "natures" => clean_single_natures(output.as_mut()),
         "all" => clean_all(project, output.as_mut()),
@@ -66,20 +61,13 @@ fn clean_all(
     project: Result<Project, String>,
     output: &mut dyn OutputRenderer,
 ) -> Result<String, String> {
-    let paths = resolve_clean_paths_or_report(project, true, true, output)?;
+    let paths = resolve_clean_paths_or_report(project, true, true, true, output)?;
     let paths = unique_paths(paths);
-    let total = 2 + clean_path_steps(&paths) + 1 + Nature::values().len();
+    let total = 3 + clean_path_steps(&paths) + 1 + Nature::values().len();
     let mut step = 1;
 
     output.operation_started("clean", total);
-    clean_directory(
-        output,
-        &mut step,
-        total,
-        "classes",
-        consts::BINARY_OUT_PATH,
-        "Could not remove classes folder",
-    )?;
+    clean_classes(output, &mut step, total)?;
     clean_directory(
         output,
         &mut step,
@@ -93,7 +81,7 @@ fn clean_all(
         &mut step,
         total,
         paths,
-        "configured targets or javadocs",
+        "configured targets, javadocs, or test reports",
     )?;
     clean_metadata(output, &mut step, total)?;
     clean_natures(output, &mut step, total)?;
@@ -105,7 +93,7 @@ fn clean_configuration_targets(
     project: Result<Project, String>,
     output: &mut dyn OutputRenderer,
 ) -> Result<String, String> {
-    let paths = resolve_clean_paths_or_report(project, true, false, output)?;
+    let paths = resolve_clean_paths_or_report(project, true, false, false, output)?;
     let paths = unique_paths(paths);
     let summary_count = paths.len();
     let total = clean_path_steps(&paths);
@@ -124,7 +112,7 @@ fn clean_configuration_javadocs(
     project: Result<Project, String>,
     output: &mut dyn OutputRenderer,
 ) -> Result<String, String> {
-    let paths = resolve_clean_paths_or_report(project, false, true, output)?;
+    let paths = resolve_clean_paths_or_report(project, false, true, false, output)?;
     let paths = unique_paths(paths);
     let summary_count = paths.len();
     let total = clean_path_steps(&paths);
@@ -139,13 +127,41 @@ fn clean_configuration_javadocs(
     ))
 }
 
+fn clean_configuration_tests(
+    project: Result<Project, String>,
+    output: &mut dyn OutputRenderer,
+) -> Result<String, String> {
+    let paths = resolve_clean_paths_or_report(project, false, false, true, output)?;
+    let paths = unique_paths(paths);
+    let summary_count = paths.len();
+    let total = 1 + clean_path_steps(&paths);
+    let mut step = 1;
+
+    output.operation_started("clean", total);
+    clean_directory(
+        output,
+        &mut step,
+        total,
+        "test classes",
+        consts::TEST_BINARY_OUT_PATH,
+        "Could not remove test classes folder",
+    )?;
+    clean_paths(output, &mut step, total, paths, "configured test reports")?;
+
+    Ok(format!(
+        "Cleaned test classes and {summary_count} configured {}",
+        test_reports_label(summary_count)
+    ))
+}
+
 fn resolve_clean_paths_or_report(
     project: Result<Project, String>,
     include_targets: bool,
     include_javadocs: bool,
+    include_tests: bool,
     output: &mut dyn OutputRenderer,
 ) -> Result<Vec<String>, String> {
-    match configured_clean_paths(project, include_targets, include_javadocs) {
+    match configured_clean_paths(project, include_targets, include_javadocs, include_tests) {
         Ok(paths) => Ok(paths),
         Err(error) => {
             output.operation_started("clean", 1);
@@ -159,6 +175,7 @@ fn configured_clean_paths(
     project: Result<Project, String>,
     include_targets: bool,
     include_javadocs: bool,
+    include_tests: bool,
 ) -> Result<Vec<String>, String> {
     let project: Project = project.map_err(|e| {
         format!("Could not read a Wisteria project.toml file in this directory. ({e})")
@@ -170,21 +187,23 @@ fn configured_clean_paths(
         .get(&metadata.configuration)
         .ok_or_else(|| format!("No such configuration \"{}\".", metadata.configuration))?;
 
-    resolve_configuration_paths(configuration, include_targets, include_javadocs)
+    resolve_configuration_paths(
+        configuration,
+        include_targets,
+        include_javadocs,
+        include_tests,
+    )
 }
 
 fn load_clean_metadata() -> Result<Metadata, String> {
-    if PathBuf::from(consts::METADATA_FILE).exists() {
-        Metadata::load()
-    } else {
-        Ok(Metadata::default())
-    }
+    Metadata::load_or_initialize()
 }
 
 fn resolve_configuration_paths(
     configuration: &Configuration,
     include_targets: bool,
     include_javadocs: bool,
+    include_tests: bool,
 ) -> Result<Vec<String>, String> {
     let regexes = envvar_regexes();
     let mut paths = Vec::new();
@@ -225,6 +244,14 @@ fn resolve_configuration_paths(
         }
     }
 
+    if include_tests && let Some(test) = configuration.test() {
+        paths.push(resolve_filepath(
+            test.reports_dir(),
+            configuration.environment(),
+            &regexes,
+        )?);
+    }
+
     Ok(paths)
 }
 
@@ -241,6 +268,39 @@ fn clean_single_directory(
     clean_directory(output, &mut step, total, item, path, error_prefix)?;
 
     Ok(format!("Cleaned {item}"))
+}
+
+fn clean_class_directories(output: &mut dyn OutputRenderer) -> Result<String, String> {
+    let total = 2;
+    let mut step = 1;
+
+    output.operation_started("clean", total);
+    clean_classes(output, &mut step, total)?;
+
+    Ok(String::from("Cleaned classes"))
+}
+
+fn clean_classes(
+    output: &mut dyn OutputRenderer,
+    step: &mut usize,
+    total: usize,
+) -> Result<(), String> {
+    clean_directory(
+        output,
+        step,
+        total,
+        "classes",
+        consts::BINARY_OUT_PATH,
+        "Could not remove classes folder",
+    )?;
+    clean_directory(
+        output,
+        step,
+        total,
+        "test classes",
+        consts::TEST_BINARY_OUT_PATH,
+        "Could not remove test classes folder",
+    )
 }
 
 fn clean_directory(
@@ -304,13 +364,9 @@ fn clean_metadata(
 }
 
 fn reset_metadata_file() -> Result<(), String> {
-    fs::create_dir_all(consts::WISTERIA_DIR)
-        .map_err(|e| format!("Could not create Wisteria metadata folder: {e}"))?;
-    fs::write(
-        consts::METADATA_FILE,
-        generate_metadata(&Metadata::default()),
-    )
-    .map_err(|e| format!("Could not reset metadata: {e}"))
+    Metadata::default()
+        .write_to_workspace()
+        .map_err(|e| format!("Could not reset metadata: {e}"))
 }
 
 fn clean_single_natures(output: &mut dyn OutputRenderer) -> Result<String, String> {
@@ -416,6 +472,13 @@ fn javadocs_label(count: usize) -> &'static str {
     }
 }
 
+fn test_reports_label(count: usize) -> &'static str {
+    match count {
+        1 => "test report path",
+        _ => "test report paths",
+    }
+}
+
 fn nature_label(count: usize) -> &'static str {
     match count {
         1 => "nature",
@@ -491,18 +554,78 @@ mod tests {
             [javadoc]
             output-dir = "target/docs/{configuration}/"
             target = "target/{version}/demo-javadocs.jar"
+
+            [test]
+            sources = [ "src/test/" ]
+            runner = "junit"
+            launcher = "junit"
+            reports_dir = "target/test-results/{configuration}/"
             "#,
         );
 
         assert_eq!(
-            resolve_configuration_paths(&configuration, true, true).unwrap(),
+            resolve_configuration_paths(&configuration, true, true, true).unwrap(),
             vec![
                 String::from("target/main/demo.jar"),
                 String::from("target/1.2.3/demo-javadocs.jar"),
                 String::from("target/docs/main/"),
                 String::from("target/1.2.3/demo-javadocs.jar"),
+                String::from("target/test-results/main/"),
             ]
         );
+    }
+
+    #[test]
+    fn clean_configuration_tests_removes_test_classes_and_reports() {
+        let temp = TempDir::new("clean-tests");
+        let project_file = temp.path().join("project.toml");
+        fs::write(
+            &project_file,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+
+            [dependencies.maven]
+            junit = { group_id = "org.junit.platform", artifact_id = "junit-platform-console-standalone", version = "6.0.0" }
+
+            [configuration.main]
+            sources = [ "src/main/" ]
+            dependencies = [
+                { name = "junit", scope = "test" },
+            ]
+
+            [configuration.main.test]
+            sources = [ "src/test/" ]
+            runner = "junit"
+            launcher = "junit"
+            reports_dir = "target/test-results/{configuration}/"
+            "#,
+        )
+        .unwrap();
+
+        with_current_dir(temp.path(), || {
+            fs::create_dir_all(consts::TEST_BINARY_OUT_PATH).unwrap();
+            fs::write(
+                PathBuf::from(consts::TEST_BINARY_OUT_PATH).join("ExampleTest.class"),
+                "class",
+            )
+            .unwrap();
+            fs::create_dir_all("target/test-results/main").unwrap();
+            fs::write("target/test-results/main/TEST-example.xml", "report").unwrap();
+
+            let project = Project::from(Some(project_file.to_string_lossy().to_string()));
+            let mut output = crate::output::renderer(crate::output::OutputMode::Plain);
+            let message = clean_configuration_tests(project, output.as_mut()).unwrap();
+
+            assert_eq!(
+                message,
+                "Cleaned test classes and 1 configured test report path"
+            );
+            assert!(!PathBuf::from(consts::TEST_BINARY_OUT_PATH).exists());
+            assert!(!PathBuf::from("target/test-results/main").exists());
+        });
     }
 
     #[test]

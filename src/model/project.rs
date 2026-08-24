@@ -5,7 +5,9 @@ use toml::Table;
 use crate::{
     cli::args::StartupFlags,
     config::toml_utils,
-    dependency::{Dependency, load_dependency_map, migrate_legacy_dependency_table},
+    dependency::{
+        Dependency, DependencyScope, load_dependency_map, migrate_legacy_dependency_table,
+    },
     model::Configuration,
     util::consts,
     workspace::nature::Nature,
@@ -286,21 +288,69 @@ fn validate_configuration_dependency_references(
 
     for configuration_name in configuration_names {
         let configuration = configurations.get(configuration_name).unwrap();
-        let Some(references) = configuration.dependencies() else {
-            continue;
-        };
+        if let Some(references) = configuration.dependencies() {
+            for (index, reference) in references.iter().enumerate() {
+                if dependencies.contains_key(reference.name()) {
+                    continue;
+                }
 
-        for (index, reference) in references.iter().enumerate() {
-            if dependencies.contains_key(reference.name()) {
-                continue;
+                return Err(format!(
+                    "Invalid [configuration.{configuration_name}].dependencies[{index}]: dependency `{}` is not declared.\nFix: add `{}` under a dependency source table such as `[dependencies.maven]`, `[dependencies.archive]`, `[dependencies.github]`, `[dependencies.folder]`, or `[dependencies.url]`, or remove/rename this reference.",
+                    reference.name(),
+                    reference.name()
+                ));
             }
-
-            return Err(format!(
-                "Invalid [configuration.{configuration_name}].dependencies[{index}]: dependency `{}` is not declared.\nFix: add `{}` under a dependency source table such as `[dependencies.maven]`, `[dependencies.archive]`, `[dependencies.github]`, `[dependencies.folder]`, or `[dependencies.url]`, or remove/rename this reference.",
-                reference.name(),
-                reference.name()
-            ));
         }
+
+        validate_test_launcher_reference(configuration_name, configuration, dependencies)?;
+    }
+
+    Ok(())
+}
+
+fn validate_test_launcher_reference(
+    configuration_name: &str,
+    configuration: &Configuration,
+    dependencies: &HashMap<String, Dependency>,
+) -> Result<(), String> {
+    let Some(test) = configuration.test() else {
+        return Ok(());
+    };
+
+    if !dependencies.contains_key(test.launcher()) {
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}.test].launcher: dependency `{}` is not declared.\nFix: add `{}` under a dependency source table, such as `[dependencies.maven]`, or change `launcher` to a declared JUnit 6 console launcher dependency.",
+            test.launcher(),
+            test.launcher(),
+        ));
+    }
+
+    let Some(references) = configuration.dependencies() else {
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}.test].launcher: dependency `{}` is not referenced by [configuration.{configuration_name}].dependencies.\nFix: add `{{ name = \"{}\", scope = \"test\" }}` to [configuration.{configuration_name}].dependencies.",
+            test.launcher(),
+            test.launcher(),
+        ));
+    };
+
+    let Some(reference) = references
+        .iter()
+        .find(|reference| reference.name() == test.launcher())
+    else {
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}.test].launcher: dependency `{}` is not referenced by [configuration.{configuration_name}].dependencies.\nFix: add `{{ name = \"{}\", scope = \"test\" }}` to [configuration.{configuration_name}].dependencies.",
+            test.launcher(),
+            test.launcher(),
+        ));
+    };
+
+    if reference.scope() != DependencyScope::Test {
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}.test].launcher: dependency `{}` is referenced with scope `{}`, but test launchers must use scope `test`.\nFix: change the dependency reference to `{{ name = \"{}\", scope = \"test\" }}`.",
+            test.launcher(),
+            reference.scope(),
+            test.launcher(),
+        ));
     }
 
     Ok(())
@@ -535,6 +585,136 @@ mod tests {
         assert!(error.contains("Invalid [configuration.main].dependencies[1]"));
         assert!(error.contains("dependency `missing` is not declared"));
         assert!(error.contains("add `missing` under a dependency source table"));
+    }
+
+    #[test]
+    fn loads_test_configuration_with_test_scoped_launcher() {
+        let temp = TempDir::new("project-test-launcher");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [dependencies.maven]
+            junit = { group_id = "org.junit.platform", artifact_id = "junit-platform-console-standalone", version = "6.0.0" }
+
+            [configuration.main]
+            sources = [ "src/main/" ]
+            dependencies = [
+                { name = "junit", scope = "test" },
+            ]
+
+            [configuration.main.test]
+            sources = [ "src/test/" ]
+            runner = "junit"
+            launcher = "junit"
+            "#,
+        );
+
+        let project = Project::from(Some(project_file)).unwrap();
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        assert!(configuration.tasks().contains_key("test"));
+    }
+
+    #[test]
+    fn rejects_test_launcher_that_is_not_declared() {
+        let temp = TempDir::new("project-test-launcher-missing-declaration");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [configuration.main]
+            sources = [ "src/main/" ]
+
+            [configuration.main.test]
+            sources = [ "src/test/" ]
+            runner = "junit"
+            launcher = "junit"
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected missing launcher dependency to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main.test].launcher"));
+        assert!(error.contains("dependency `junit` is not declared"));
+    }
+
+    #[test]
+    fn rejects_test_launcher_that_is_not_referenced_by_configuration() {
+        let temp = TempDir::new("project-test-launcher-not-referenced");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [dependencies.maven]
+            junit = { group_id = "org.junit.platform", artifact_id = "junit-platform-console-standalone", version = "6.0.0" }
+
+            [configuration.main]
+            sources = [ "src/main/" ]
+            dependencies = [ ]
+
+            [configuration.main.test]
+            sources = [ "src/test/" ]
+            runner = "junit"
+            launcher = "junit"
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected unreferenced launcher dependency to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("not referenced by [configuration.main].dependencies"));
+        assert!(error.contains("{ name = \"junit\", scope = \"test\" }"));
+    }
+
+    #[test]
+    fn rejects_test_launcher_that_is_not_test_scoped() {
+        let temp = TempDir::new("project-test-launcher-wrong-scope");
+        let project_file = write_project(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo project"
+
+            [dependencies.maven]
+            junit = { group_id = "org.junit.platform", artifact_id = "junit-platform-console-standalone", version = "6.0.0" }
+
+            [configuration.main]
+            sources = [ "src/main/" ]
+            dependencies = [ "junit" ]
+
+            [configuration.main.test]
+            sources = [ "src/test/" ]
+            runner = "junit"
+            launcher = "junit"
+            "#,
+        );
+
+        let error = match Project::from(Some(project_file)) {
+            Ok(_) => panic!("expected compile-scoped launcher dependency to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("must use scope `test`"));
     }
 
     #[test]

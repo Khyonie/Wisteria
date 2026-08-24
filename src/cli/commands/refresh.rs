@@ -11,7 +11,7 @@ pub fn trigger_refresh(project: Result<Project, String>, flags: &StartupFlags) {
     let project: Project = project_or_exit(project);
     let mut output = output::renderer(flags.output_mode);
 
-    let metadata = match Metadata::load() {
+    let metadata = match Metadata::load_or_initialize() {
         Ok(m) => m,
         Err(e) => {
             output.log(&e);

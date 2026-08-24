@@ -16,7 +16,7 @@ use std::collections::HashMap;
 pub fn trigger_sync(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let project: Project = project_or_exit(project);
 
-    let metadata = match Metadata::load() {
+    let metadata = match Metadata::load_or_initialize() {
         Ok(m) => m,
         Err(e) => {
             println!("{e}");

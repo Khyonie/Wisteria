@@ -9,6 +9,7 @@ use crate::{
         javadoc::ImplicitJavadocTask,
         run::ImplicitRunTask,
         task::{DefinedTask, ImplicitBuildTask, TaskRunner},
+        test::ImplicitTestTask,
     },
     cli::args::StartupFlags,
     config::toml_utils::{self, read_optional_string, read_string},
@@ -49,6 +50,82 @@ impl JavadocConfiguration {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TestRunner {
+    Junit6,
+}
+
+impl TestRunner {
+    fn from(value: &str) -> Result<Self, String> {
+        match value.to_lowercase().as_str() {
+            "junit" | "junit6" | "junit-6" | "junit-platform" => Ok(Self::Junit6),
+            _ => Err(format!(
+                "Unknown test runner \"{value}\".\nFix: currently only JUnit 6 is supported; use `runner = \"junit\"`."
+            )),
+        }
+    }
+
+    pub fn type_str(self) -> &'static str {
+        match self {
+            Self::Junit6 => "junit",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TestConfiguration {
+    sources: Vec<String>,
+    runner: TestRunner,
+    launcher: String,
+    reports_dir: Option<String>,
+}
+
+impl TestConfiguration {
+    fn from(configuration_name: &str, toml: &Table) -> Result<Self, String> {
+        validate_test_configuration_keys(configuration_name, toml)?;
+
+        let sources =
+            read_string_array_for_test_configuration(configuration_name, "sources", toml)?;
+        if sources.is_empty() {
+            return Err(format!(
+                "Invalid [configuration.{configuration_name}.test].sources: expected at least one source folder.\nFix: use `sources = [ \"src/test/\" ]`, or remove `[configuration.{configuration_name}.test]` if this configuration has no tests."
+            ));
+        }
+
+        let runner = read_string_for_test_configuration(configuration_name, "runner", toml)?;
+        let runner = TestRunner::from(&runner).map_err(|error| {
+            contextual_test_configuration_error(configuration_name, "runner", error)
+        })?;
+        let launcher = read_string_for_test_configuration(configuration_name, "launcher", toml)?;
+        let reports_dir = read_optional_reports_dir(configuration_name, toml)?;
+
+        Ok(Self {
+            sources,
+            runner,
+            launcher,
+            reports_dir,
+        })
+    }
+
+    pub fn sources(&self) -> &[String] {
+        &self.sources
+    }
+
+    pub fn runner(&self) -> TestRunner {
+        self.runner
+    }
+
+    pub fn launcher(&self) -> &str {
+        &self.launcher
+    }
+
+    pub fn reports_dir(&self) -> &str {
+        self.reports_dir
+            .as_deref()
+            .unwrap_or(consts::DEFAULT_TEST_REPORTS_DIR)
+    }
+}
+
 #[derive(Clone)]
 pub struct Configuration {
     name: String,
@@ -57,6 +134,7 @@ pub struct Configuration {
     includes: Option<Vec<String>>,
     targets: Option<Vec<String>>,
     javadoc: Option<JavadocConfiguration>,
+    test: Option<TestConfiguration>,
 
     entry: Option<String>,
     java_version: u8,
@@ -96,6 +174,16 @@ impl Configuration {
             Some(v) => {
                 return Err(format!(
                     "Invalid [configuration.{name}].javadoc: expected a table, found {}.\nFix: define javadoc settings under `[configuration.{name}.javadoc]`, or remove `javadoc`.",
+                    v.type_str()
+                ));
+            }
+            None => None,
+        };
+        let test = match toml.get("test") {
+            Some(v) if v.is_table() => Some(TestConfiguration::from(&name, v.as_table().unwrap())?),
+            Some(v) => {
+                return Err(format!(
+                    "Invalid [configuration.{name}].test: expected a table, found {}.\nFix: define test settings under `[configuration.{name}.test]`, or remove `test`.",
                     v.type_str()
                 ));
             }
@@ -196,6 +284,7 @@ impl Configuration {
             includes,
             targets,
             javadoc,
+            test,
             entry,
             java_version,
             tasks,
@@ -203,6 +292,10 @@ impl Configuration {
             environment,
             inherit,
         })
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn sources(&self) -> Option<&Vec<String>> {
@@ -223,6 +316,10 @@ impl Configuration {
 
     pub fn javadoc(&self) -> Option<&JavadocConfiguration> {
         self.javadoc.as_ref()
+    }
+
+    pub fn test(&self) -> Option<&TestConfiguration> {
+        self.test.as_ref()
     }
 
     pub fn javadoc_output_dir(&self) -> &str {
@@ -278,6 +375,11 @@ impl Configuration {
                     .insert(String::from("run"), Rc::new(ImplicitRunTask::new(flags)));
             }
         }
+
+        if self.test.is_some() {
+            self.tasks
+                .insert(String::from("test"), Rc::new(ImplicitTestTask::new()));
+        }
     }
 
     pub fn inherit_from(&mut self, configuration: &Configuration) -> Result<(), String> {
@@ -298,6 +400,9 @@ impl Configuration {
             (Some(javadoc), Some(parent_javadoc)) => javadoc.inherit_from(parent_javadoc),
             (None, Some(parent_javadoc)) => self.javadoc = Some(parent_javadoc.clone()),
             _ => {}
+        }
+        if self.test.is_none() && configuration.test.is_some() {
+            self.test = configuration.test.clone();
         }
         if self.entry.is_none() && configuration.entry.is_some() {
             self.entry = configuration.entry.clone();
@@ -356,6 +461,16 @@ impl Configuration {
             }
         }
 
+        if let Some(test) = &self.test {
+            println!(
+                "│\tTests            {} via {}",
+                toml_utils::string_vec_to_string(&test.sources),
+                test.runner().type_str()
+            );
+            println!("│\tTest launcher    {}", test.launcher());
+            println!("│\tTest reports     {}", test.reports_dir());
+        }
+
         println!("│\tJava version     {}", self.java_version);
 
         let mut environment: String = String::new();
@@ -406,6 +521,75 @@ impl Configuration {
             println!("│\t│\t         {key} [ {phases} ]")
         }
     }
+}
+
+fn validate_test_configuration_keys(configuration_name: &str, toml: &Table) -> Result<(), String> {
+    for key in toml.keys() {
+        if matches!(
+            key.as_str(),
+            "sources" | "runner" | "launcher" | "reports_dir" | "reports-dir" | "reports"
+        ) {
+            continue;
+        }
+
+        return Err(format!(
+            "Invalid [configuration.{configuration_name}.test].{key}: unknown test configuration key.\nFix: use only `sources`, `runner`, `launcher`, and `reports_dir`, or remove the unrecognized key."
+        ));
+    }
+
+    Ok(())
+}
+
+fn read_string_for_test_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<String, String> {
+    toml_utils::read_string(key, toml)
+        .map_err(|error| contextual_test_configuration_error(configuration_name, key, error))
+}
+
+fn read_string_array_for_test_configuration(
+    configuration_name: &str,
+    key: &str,
+    toml: &Table,
+) -> Result<Vec<String>, String> {
+    toml_utils::read_string_array(key, toml)
+        .map_err(|error| contextual_test_configuration_error(configuration_name, key, error))
+}
+
+fn read_optional_reports_dir(
+    configuration_name: &str,
+    toml: &Table,
+) -> Result<Option<String>, String> {
+    let keys = ["reports_dir", "reports-dir", "reports"];
+    let present_keys: Vec<&str> = keys
+        .into_iter()
+        .filter(|key| toml.contains_key(*key))
+        .collect();
+
+    match present_keys.as_slice() {
+        [] => Ok(None),
+        [key] => match toml.get(*key) {
+            Some(Value::String(value)) => Ok(Some(value.clone())),
+            Some(value) => Err(format!(
+                "Invalid [configuration.{configuration_name}.test].{key}: expected a string, found {}.\nFix: use `reports_dir = \"target/test-results/{{configuration}}/\"`, or remove the key to use the default.",
+                value.type_str()
+            )),
+            None => unreachable!(),
+        },
+        _ => Err(format!(
+            "Invalid [configuration.{configuration_name}.test]: test report directory is configured more than once.\nFix: use only `reports_dir = \"target/test-results/{{configuration}}/\"` and remove `reports-dir` or `reports`."
+        )),
+    }
+}
+
+fn contextual_test_configuration_error(
+    configuration_name: &str,
+    key: &str,
+    error: String,
+) -> String {
+    format!("Invalid [configuration.{configuration_name}.test].{key}: {error}")
 }
 
 fn read_optional_string_for_configuration(
@@ -806,6 +990,59 @@ mod tests {
     }
 
     #[test]
+    fn configuration_loads_test_configuration() {
+        let configuration = Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                sources = [ "src/main/" ]
+                dependencies = [
+                    { name = "junit", scope = "test" },
+                ]
+
+                [test]
+                sources = [ "src/test/" ]
+                runner = "junit"
+                launcher = "junit"
+                reports_dir = "target/test-results/main/"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        let test = configuration.test().unwrap();
+        assert_eq!(test.sources(), &[String::from("src/test/")]);
+        assert_eq!(test.runner(), TestRunner::Junit6);
+        assert_eq!(test.launcher(), "junit");
+        assert_eq!(test.reports_dir(), "target/test-results/main/");
+    }
+
+    #[test]
+    fn test_configuration_uses_default_reports_dir() {
+        let configuration = Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                [test]
+                sources = [ "src/test/" ]
+                runner = "junit"
+                launcher = "junit"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            configuration.test().unwrap().reports_dir(),
+            consts::DEFAULT_TEST_REPORTS_DIR
+        );
+    }
+
+    #[test]
     fn apply_implicit_adds_build_task_when_sources_and_targets_exist() {
         let mut configuration = Configuration::from(
             String::from("main"),
@@ -831,6 +1068,41 @@ mod tests {
                 String::from("compile"),
                 String::from("shade"),
                 String::from("package"),
+            ]
+        );
+    }
+
+    #[test]
+    fn apply_implicit_adds_test_task_when_test_configuration_exists() {
+        let mut configuration = Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                sources = [ "src/main/" ]
+
+                [test]
+                sources = [ "src/test/" ]
+                runner = "junit"
+                launcher = "junit"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        )
+        .unwrap();
+
+        configuration.apply_implicit(StartupFlags::default());
+
+        let test = configuration.tasks().get("test").unwrap();
+        assert_eq!(
+            test.phase_order(),
+            &[
+                String::from("resolve"),
+                String::from("collect"),
+                String::from("compile"),
+                String::from("collect-tests"),
+                String::from("compile-tests"),
+                String::from("test"),
             ]
         );
     }
@@ -1037,5 +1309,52 @@ mod tests {
 
         assert!(error.contains("Invalid [configuration.main].java_version"));
         assert!(error.contains("expected a number from 0 to 255"));
+    }
+
+    #[test]
+    fn rejects_unknown_test_runner() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                [test]
+                sources = [ "src/test/" ]
+                runner = "junit5"
+                launcher = "junit"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected unknown test runner to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Invalid [configuration.main.test].runner"));
+        assert!(error.contains("currently only JUnit 6 is supported"));
+    }
+
+    #[test]
+    fn rejects_duplicate_test_report_keys() {
+        let error = match Configuration::from(
+            String::from("main"),
+            &table(
+                r#"
+                [test]
+                sources = [ "src/test/" ]
+                runner = "junit"
+                launcher = "junit"
+                reports = "target/legacy/"
+                reports_dir = "target/reports/"
+                "#,
+            ),
+            String::from("Demo"),
+            String::from("1.0.0"),
+        ) {
+            Ok(_) => panic!("expected duplicate test report keys to fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("test report directory is configured more than once"));
     }
 }

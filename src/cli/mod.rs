@@ -33,7 +33,7 @@ pub fn run() {
         "update" => commands::update::trigger_update(project, &args, &flags),
         "clean" if args.len() == 2 => {
             println!(
-                "Not enough arguments. Expected one of [ classes, dependencies, targets, javadocs, metadata, natures, all ], but nothing was supplied."
+                "Not enough arguments. Expected one of [ classes, dependencies, targets, javadocs, tests, metadata, natures, all ], but nothing was supplied."
             );
             exit(1)
         }
