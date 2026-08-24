@@ -10,7 +10,7 @@ use crate::util::exit_code;
 pub fn trigger_task(project: Result<Project, String>, args: &[String], flags: &StartupFlags) {
     let project: Project = project_or_exit(project);
 
-    let metadata = match Metadata::load() {
+    let metadata = match Metadata::load_or_initialize() {
         Ok(m) => m,
         Err(e) => {
             println!("{e}");

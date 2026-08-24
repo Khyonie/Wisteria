@@ -7,7 +7,6 @@ use std::{
 
 use crate::{
     cli::{args::StartupFlags, commands::envvar_regexes},
-    generators::generate_metadata,
     model::{Configuration, Metadata, Project},
     output::{self, OutputRenderer},
     util::consts,
@@ -162,11 +161,7 @@ fn configured_clean_paths(
 }
 
 fn load_clean_metadata() -> Result<Metadata, String> {
-    if PathBuf::from(consts::METADATA_FILE).exists() {
-        Metadata::load()
-    } else {
-        Ok(Metadata::default())
-    }
+    Metadata::load_or_initialize()
 }
 
 fn resolve_configuration_paths(
@@ -325,13 +320,9 @@ fn clean_metadata(
 }
 
 fn reset_metadata_file() -> Result<(), String> {
-    fs::create_dir_all(consts::WISTERIA_DIR)
-        .map_err(|e| format!("Could not create Wisteria metadata folder: {e}"))?;
-    fs::write(
-        consts::METADATA_FILE,
-        generate_metadata(&Metadata::default()),
-    )
-    .map_err(|e| format!("Could not reset metadata: {e}"))
+    Metadata::default()
+        .write_to_workspace()
+        .map_err(|e| format!("Could not reset metadata: {e}"))
 }
 
 fn clean_single_natures(output: &mut dyn OutputRenderer) -> Result<String, String> {

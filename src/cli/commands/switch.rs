@@ -17,7 +17,7 @@ pub fn trigger_switch(project: Result<Project, String>, args: &[String], flags: 
     let project: Project = project_or_exit(project);
     let mut output = output::renderer(flags.output_mode);
 
-    let mut metadata = match Metadata::load() {
+    let mut metadata = match Metadata::load_or_initialize() {
         Ok(m) => m,
         Err(e) => {
             output.log(&e);

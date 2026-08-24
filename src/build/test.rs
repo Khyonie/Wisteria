@@ -10,7 +10,6 @@ use crate::{
         task::{TaskOutput, TaskRunner},
     },
     model::{Configuration, Project, ProjectInfo, TestRunner},
-    output,
     util::{consts, exit_code},
     workspace::paths::resolve_filepath,
 };
@@ -189,7 +188,7 @@ fn run_junit6_tests(
 
     match java_command.output() {
         Ok(out) => {
-            output::log_process_output(output.renderer(), &out.stdout, &out.stderr);
+            log_junit_process_output(output.renderer(), &out.stdout, &out.stderr);
 
             if !out.status.success() {
                 exit_code::record_external_process_exit_code(out.status);
@@ -280,6 +279,160 @@ fn source_message(count: usize, label: &str) -> String {
     )
 }
 
+fn log_junit_process_output(
+    renderer: &mut dyn crate::output::OutputRenderer,
+    stdout: &[u8],
+    stderr: &[u8],
+) {
+    let stdout = String::from_utf8_lossy(stdout);
+    let stdout = format_junit_console_output(&stdout);
+    log_junit_text(renderer, &stdout);
+
+    let stderr = String::from_utf8_lossy(stderr);
+    log_junit_text(renderer, &stderr);
+}
+
+fn log_junit_text(renderer: &mut dyn crate::output::OutputRenderer, text: &str) {
+    let text = text.trim_end_matches(['\r', '\n']);
+    if !text.is_empty() {
+        renderer.log(text);
+    }
+}
+
+fn format_junit_console_output(output: &str) -> String {
+    let mut details = Vec::new();
+    let mut summary = JunitConsoleSummary::default();
+
+    for line in output.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("Test run finished after ") {
+            summary.finished = Some(trimmed.to_string());
+            continue;
+        }
+
+        if let Some((group, metric, count)) = parse_junit_summary_line(trimmed) {
+            summary.record(group, metric, count);
+            continue;
+        }
+
+        details.push(line.to_string());
+    }
+
+    let mut lines = trim_empty_edge_lines(details);
+    if let Some(finished) = summary.finished {
+        lines.push(finished);
+    }
+    if let Some(containers) = summary.containers.format("Containers") {
+        lines.push(containers);
+    }
+    if let Some(tests) = summary.tests.format("Tests") {
+        lines.push(tests);
+    }
+
+    if lines.is_empty() {
+        output.trim_end_matches(['\r', '\n']).to_string()
+    } else {
+        lines.join("\n")
+    }
+}
+
+fn parse_junit_summary_line(line: &str) -> Option<(JunitSummaryGroup, String, String)> {
+    let inner = line.strip_prefix('[')?.strip_suffix(']')?.trim();
+    let mut parts = inner.split_whitespace();
+    let count = parts.next()?.to_string();
+    let group = JunitSummaryGroup::from(parts.next()?)?;
+    let metric = parts.collect::<Vec<_>>().join(" ");
+
+    if metric.is_empty() {
+        return None;
+    }
+
+    Some((group, metric, count))
+}
+
+fn trim_empty_edge_lines(lines: Vec<String>) -> Vec<String> {
+    let Some(first) = lines.iter().position(|line| !line.trim().is_empty()) else {
+        return Vec::new();
+    };
+    let last = lines
+        .iter()
+        .rposition(|line| !line.trim().is_empty())
+        .unwrap();
+
+    lines[first..=last].to_vec()
+}
+
+#[derive(Default)]
+struct JunitConsoleSummary {
+    finished: Option<String>,
+    containers: JunitSummaryCounts,
+    tests: JunitSummaryCounts,
+}
+
+impl JunitConsoleSummary {
+    fn record(&mut self, group: JunitSummaryGroup, metric: String, count: String) {
+        match group {
+            JunitSummaryGroup::Containers => self.containers.record(metric, count),
+            JunitSummaryGroup::Tests => self.tests.record(metric, count),
+        }
+    }
+}
+
+#[derive(Default)]
+struct JunitSummaryCounts {
+    entries: Vec<(String, String)>,
+}
+
+impl JunitSummaryCounts {
+    fn record(&mut self, metric: String, count: String) {
+        self.entries.push((metric, count));
+    }
+
+    fn format(&self, label: &str) -> Option<String> {
+        const ORDER: [&str; 6] = [
+            "found",
+            "skipped",
+            "started",
+            "aborted",
+            "successful",
+            "failed",
+        ];
+
+        let entries = ORDER
+            .into_iter()
+            .filter_map(|metric| {
+                self.entries
+                    .iter()
+                    .find(|(entry_metric, _)| entry_metric == metric)
+                    .map(|(_, count)| format!("{count} {metric}"))
+            })
+            .collect::<Vec<_>>();
+
+        if entries.is_empty() {
+            return None;
+        }
+
+        Some(format!("{label}: {}", entries.join(" | ")))
+    }
+}
+
+#[derive(Clone, Copy)]
+enum JunitSummaryGroup {
+    Containers,
+    Tests,
+}
+
+impl JunitSummaryGroup {
+    fn from(value: &str) -> Option<Self> {
+        match value {
+            "containers" => Some(Self::Containers),
+            "tests" => Some(Self::Tests),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,5 +473,53 @@ mod tests {
     fn source_message_pluralizes_source_files() {
         assert_eq!(source_message(1, "test source"), "1 test source file");
         assert_eq!(source_message(2, "test source"), "2 test source files");
+    }
+
+    #[test]
+    fn formats_junit_summary_as_horizontal_lines() {
+        let output = format_junit_console_output(
+            r#"
+╷
+├─ JUnit Jupiter ✔
+│  └─ ExampleTest ✔
+│     └─ passingTest() ✔
+╵
+
+Test run finished after 42 ms
+[         3 containers found      ]
+[         0 containers skipped    ]
+[         3 containers started    ]
+[         0 containers aborted    ]
+[         3 containers successful ]
+[         0 containers failed     ]
+[         1 tests found           ]
+[         0 tests skipped         ]
+[         1 tests started         ]
+[         0 tests aborted         ]
+[         1 tests successful      ]
+[         0 tests failed          ]
+"#,
+        );
+
+        assert!(output.contains("├─ JUnit Jupiter ✔"));
+        assert!(output.contains("Test run finished after 42 ms"));
+        assert!(output.contains(
+            "Containers: 3 found | 0 skipped | 3 started | 0 aborted | 3 successful | 0 failed"
+        ));
+        assert!(output.contains(
+            "Tests: 1 found | 0 skipped | 1 started | 0 aborted | 1 successful | 0 failed"
+        ));
+        assert!(!output.contains("[         3 containers found"));
+        assert!(!output.contains("[         1 tests found"));
+    }
+
+    #[test]
+    fn leaves_non_junit_summary_output_unchanged() {
+        let output = "Something unexpected\nwith multiple lines\n";
+
+        assert_eq!(
+            format_junit_console_output(output),
+            "Something unexpected\nwith multiple lines"
+        );
     }
 }
