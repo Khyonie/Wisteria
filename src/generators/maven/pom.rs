@@ -1,14 +1,11 @@
-use std::collections::BTreeMap;
+use std::path::Path;
 
-use reqwest::blocking::Client;
 use xml::{EmitterConfig, EventWriter, writer::XmlEvent};
 
 use crate::dependency::Dependency;
-use crate::maven::{repository, repository::ArtifactVersion};
-use crate::model::{Configuration, Project};
-use crate::workspace::download;
-
-const DEFAULT_MAVEN_CENTRAL: &str = "https://repo1.maven.org/maven2";
+use crate::model::lockfile::try_read_lockfile;
+use crate::model::{Configuration, Lockfile, LockfileArtifact, Project};
+use crate::util::consts;
 
 #[allow(unused)]
 pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<String, String> {
@@ -49,19 +46,9 @@ pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<
         .write(XmlEvent::end_element())
         .map_err(|e| e.to_string())?;
 
-    let repositories = collect_repositories(project, configuration);
-    if !repositories.is_empty() {
-        write_repositories(&mut writer, &repositories)?;
-    }
-
     writer
         .write(XmlEvent::start_element("dependencies"))
         .map_err(|e| e.to_string())?;
-
-    let client: Client = Client::builder()
-        .user_agent(download::USER_AGENT)
-        .build()
-        .unwrap();
 
     let Some(configuration_dependencies) = configuration.dependencies() else {
         writer
@@ -74,53 +61,25 @@ pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<
         return Ok(String::from_utf8(bytes).unwrap());
     };
 
+    let mut loaded_lockfile: Option<Option<Lockfile>> = None;
+
     for dependency_reference in configuration_dependencies {
         let Some(dependency) = project.dependencies().get(dependency_reference.name()) else {
             continue;
         };
 
-        match dependency {
-            Dependency::FetchFromMaven {
-                url,
-                group_id,
-                artifact_id,
-                version,
-                classifier,
-                ..
-            } => {
-                writer
-                    .write(XmlEvent::start_element("dependency"))
-                    .map_err(|e| e.to_string())?;
-
-                write_text_element(&mut writer, "groupId", group_id)?;
-                write_text_element(&mut writer, "artifactId", artifact_id)?;
-
-                let target_version = artifact_version(version.as_ref());
-                let maven_version = repository::get_version(
-                    &client,
-                    url,
-                    group_id,
-                    artifact_id,
-                    classifier.as_ref(),
-                    &target_version,
-                )
-                .map_err(|e| e.to_string())?;
-                write_text_element(&mut writer, "version", &maven_version.0)?;
-
-                if let Some(classifier) = classifier {
-                    write_text_element(&mut writer, "classifier", classifier)?;
-                }
-
-                if let Some(scope) = dependency_reference.scope().maven_scope() {
-                    write_text_element(&mut writer, "scope", scope)?;
-                }
-
-                writer
-                    .write(XmlEvent::end_element())
-                    .map_err(|e| e.to_string())?;
-            }
-            _ => continue,
+        if !matches!(dependency, Dependency::FetchFromMaven { .. }) {
+            continue;
         }
+
+        let lockfile = match loaded_lockfile {
+            Some(ref lockfile) => lockfile,
+            None => loaded_lockfile.insert(try_read_lockfile()?),
+        };
+
+        let system_dependency =
+            maven_system_dependency(dependency_reference.name(), dependency, lockfile.as_ref())?;
+        write_maven_system_dependency(&mut writer, &system_dependency)?;
     }
     writer
         .write(XmlEvent::end_element())
@@ -133,88 +92,131 @@ pub fn generate_pom(project: &Project, configuration: &Configuration) -> Result<
     Ok(String::from_utf8(bytes).unwrap())
 }
 
-fn collect_repositories(
-    project: &Project,
-    configuration: &Configuration,
-) -> BTreeMap<String, String> {
-    let mut repositories: BTreeMap<String, String> = BTreeMap::new();
-
-    let Some(configuration_dependencies) = configuration.dependencies() else {
-        return repositories;
-    };
-
-    for dependency_reference in configuration_dependencies {
-        let Some(Dependency::FetchFromMaven { url, .. }) =
-            project.dependencies().get(dependency_reference.name())
-        else {
-            continue;
-        };
-
-        if is_default_maven_central(url) || repositories.values().any(|known_url| known_url == url)
-        {
-            continue;
-        }
-
-        let id = format!("wisteria-repository-{}", repositories.len() + 1);
-        repositories.insert(id, url.clone());
-    }
-
-    repositories
+struct MavenSystemDependency<'a> {
+    group_id: &'a str,
+    artifact_id: &'a str,
+    version: &'a str,
+    classifier: Option<&'a str>,
+    system_path: String,
 }
 
-fn write_repositories<W: std::io::Write>(
+fn maven_system_dependency<'a>(
+    name: &str,
+    dependency: &'a Dependency,
+    lockfile: Option<&'a Lockfile>,
+) -> Result<MavenSystemDependency<'a>, String> {
+    let Dependency::FetchFromMaven {
+        group_id,
+        artifact_id,
+        classifier,
+        ..
+    } = dependency
+    else {
+        unreachable!("maven_system_dependency only accepts Maven dependencies");
+    };
+
+    let artifact = matching_lockfile_artifact(name, dependency, lockfile)?;
+    let version = artifact.version().ok_or_else(|| {
+        format!(
+            "Lockfile artifact for Maven dependency \"{name}\" does not include a resolved version.\nFix: run `wisteria update {name}` to resolve the version and regenerate `{}`.",
+            consts::LOCKFILE
+        )
+    })?;
+
+    ensure_system_path_exists(name, artifact.cache_path())?;
+
+    Ok(MavenSystemDependency {
+        group_id,
+        artifact_id,
+        version,
+        classifier: classifier.as_deref(),
+        system_path: maven_system_path(artifact.cache_path()),
+    })
+}
+
+fn matching_lockfile_artifact<'a>(
+    name: &str,
+    dependency: &Dependency,
+    lockfile: Option<&'a Lockfile>,
+) -> Result<&'a LockfileArtifact, String> {
+    let Some(lockfile) = lockfile else {
+        return Err(format!(
+            "Cannot generate Maven POM system dependency for \"{name}\" because `{}` does not exist.\nFix: run `wisteria sync {name}` if the artifact is already cached, or `wisteria update {name}` to resolve, download, and lock it.",
+            consts::LOCKFILE
+        ));
+    };
+
+    let artifacts: Vec<&LockfileArtifact> = lockfile
+        .artifacts()
+        .iter()
+        .filter(|artifact| artifact.name() == name)
+        .collect();
+    let matching_artifacts: Vec<&LockfileArtifact> = artifacts
+        .iter()
+        .copied()
+        .filter(|artifact| dependency.matches_lockfile_artifact(artifact))
+        .collect();
+
+    match matching_artifacts.as_slice() {
+        [artifact] => Ok(*artifact),
+        [] if artifacts.is_empty() => Err(format!(
+            "Cannot generate Maven POM system dependency for \"{name}\" because `{}` has no matching artifact.\nFix: run `wisteria sync {name}` if the artifact is already cached, or `wisteria update {name}` to resolve, download, and lock it.",
+            consts::LOCKFILE
+        )),
+        [] => Err(format!(
+            "Cannot generate Maven POM system dependency for \"{name}\" because the artifact in `{}` does not match project.toml.\nFix: run `wisteria sync {name}` if project.toml is current, or `wisteria update {name}` to resolve and download it again.",
+            consts::LOCKFILE
+        )),
+        _ => Err(format!(
+            "Cannot generate Maven POM system dependency for \"{name}\" because `{}` has multiple matching artifacts.\nFix: run `wisteria update {name}` to rewrite a single lock entry.",
+            consts::LOCKFILE
+        )),
+    }
+}
+
+fn ensure_system_path_exists(name: &str, cache_path: &str) -> Result<(), String> {
+    if Path::new(cache_path).exists() {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Cannot generate Maven POM system dependency for \"{name}\" because the locked artifact is not cached at `{cache_path}`.\nFix: run `wisteria fetch {name}` to download the artifact recorded in `{}`, or `wisteria update {name}` if the lockfile is stale.",
+        consts::LOCKFILE
+    ))
+}
+
+fn maven_system_path(cache_path: &str) -> String {
+    let normalized = cache_path.replace('\\', "/");
+
+    if Path::new(cache_path).is_absolute() {
+        normalized
+    } else {
+        format!("${{project.basedir}}/{normalized}")
+    }
+}
+
+fn write_maven_system_dependency<W: std::io::Write>(
     writer: &mut EventWriter<W>,
-    repositories: &BTreeMap<String, String>,
+    dependency: &MavenSystemDependency<'_>,
 ) -> Result<(), String> {
     writer
-        .write(XmlEvent::start_element("repositories"))
+        .write(XmlEvent::start_element("dependency"))
         .map_err(|e| e.to_string())?;
 
-    for (id, url) in repositories {
-        writer
-            .write(XmlEvent::start_element("repository"))
-            .map_err(|e| e.to_string())?;
-        write_text_element(writer, "id", id)?;
-        write_text_element(writer, "url", url)?;
+    write_text_element(writer, "groupId", dependency.group_id)?;
+    write_text_element(writer, "artifactId", dependency.artifact_id)?;
+    write_text_element(writer, "version", dependency.version)?;
 
-        writer
-            .write(XmlEvent::start_element("releases"))
-            .map_err(|e| e.to_string())?;
-        write_text_element(writer, "enabled", "true")?;
-        writer
-            .write(XmlEvent::end_element())
-            .map_err(|e| e.to_string())?;
-
-        writer
-            .write(XmlEvent::start_element("snapshots"))
-            .map_err(|e| e.to_string())?;
-        write_text_element(writer, "enabled", "true")?;
-        writer
-            .write(XmlEvent::end_element())
-            .map_err(|e| e.to_string())?;
-
-        writer
-            .write(XmlEvent::end_element())
-            .map_err(|e| e.to_string())?;
+    if let Some(classifier) = dependency.classifier {
+        write_text_element(writer, "classifier", classifier)?;
     }
+
+    write_text_element(writer, "scope", "system")?;
+    write_text_element(writer, "systemPath", &dependency.system_path)?;
 
     writer
         .write(XmlEvent::end_element())
         .map_err(|e| e.to_string())
-}
-
-fn artifact_version(version: Option<&String>) -> ArtifactVersion {
-    match version.map(|version| version.as_str()) {
-        Some("latest") | None => ArtifactVersion::Latest,
-        Some("release") => ArtifactVersion::Release,
-        Some(version) => ArtifactVersion::Version {
-            version: version.to_string(),
-        },
-    }
-}
-
-fn is_default_maven_central(url: &str) -> bool {
-    url.trim_end_matches('/') == DEFAULT_MAVEN_CENTRAL
 }
 
 fn write_text_element<W: std::io::Write>(
@@ -236,8 +238,12 @@ fn write_text_element<W: std::io::Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::TempDir;
-    use std::fs;
+    use crate::{
+        model::{LockfileArtifact, lockfile::lockfile_artifacts_to_toml},
+        test_support::{TempDir, with_current_dir},
+        workspace::files,
+    };
+    use std::{fs, path::Path};
 
     fn project_from_toml(temp: &TempDir, contents: &str) -> Project {
         let project_file = temp.path().join("project.toml");
@@ -263,7 +269,9 @@ mod tests {
         );
         let configuration = project.info().configurations().get("main").unwrap();
 
-        let pom = generate_pom(&project, configuration).unwrap();
+        let pom = with_current_dir(temp.path(), || {
+            generate_pom(&project, configuration).unwrap()
+        });
 
         assert!(pom.contains("<groupId>com.example</groupId>"));
         assert!(pom.contains("<artifactId>Demo</artifactId>"));
@@ -273,8 +281,12 @@ mod tests {
     }
 
     #[test]
-    fn collect_repositories_skips_default_central_and_deduplicates_custom_urls() {
-        let temp = TempDir::new("pom-repositories");
+    fn generate_pom_writes_maven_dependencies_as_system_paths_from_lockfile() {
+        let temp = TempDir::new("pom-system-dependencies");
+        let cache_path = ".wisteria/cache/com.example/library/1.2.3/library.jar";
+        let fetch_url = "https://repo.example/com/example/library/1.2.3/library-1.2.3.jar";
+        write_cached_lockfile_artifact(&temp, "library", "1.2.3", fetch_url, cache_path);
+
         let project = project_from_toml(
             &temp,
             r#"
@@ -284,51 +296,162 @@ mod tests {
             description = "Demo"
 
             [dependencies.maven]
-            central = { group_id = "com.example", artifact_id = "central" }
-            custom_a = { url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "a" }
-            custom_b = { url = "https://repo.example.com/maven", group_id = "com.example", artifact_id = "b" }
-
-            [dependencies.archive]
-            local = { path = "lib/local.jar" }
+            library = { url = "https://repo.example", group_id = "com.example", artifact_id = "library", version = "latest" }
 
             [configuration.main]
-            dependencies = [ "central", "custom_a", "custom_b", "local" ]
+            dependencies = [ "library" ]
             "#,
         );
         let configuration = project.info().configurations().get("main").unwrap();
 
-        let repositories = collect_repositories(&project, configuration);
+        let pom = with_current_dir(temp.path(), || {
+            generate_pom(&project, configuration).unwrap()
+        });
 
-        assert_eq!(repositories.len(), 1);
-        assert_eq!(
-            repositories
-                .get("wisteria-repository-1")
-                .map(String::as_str),
-            Some("https://repo.example.com/maven")
+        assert!(pom.contains("<groupId>com.example</groupId>"));
+        assert!(pom.contains("<artifactId>library</artifactId>"));
+        assert!(pom.contains("<version>1.2.3</version>"));
+        assert!(pom.contains("<scope>system</scope>"));
+        assert!(pom.contains(
+            "<systemPath>${project.basedir}/.wisteria/cache/com.example/library/1.2.3/library.jar</systemPath>"
+        ));
+        assert!(!pom.contains("<repositories>"));
+    }
+
+    #[test]
+    fn generate_pom_does_not_read_lockfile_without_maven_dependencies() {
+        let temp = TempDir::new("pom-non-maven-dependencies");
+        fs::write(
+            temp.path().join(Path::new(consts::LOCKFILE)),
+            "schema = \"bad\"",
+        )
+        .unwrap();
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+
+            [dependencies.archive]
+            library = { path = "lib/library.jar" }
+
+            [configuration.main]
+            dependencies = [ "library" ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let pom = with_current_dir(temp.path(), || {
+            generate_pom(&project, configuration).unwrap()
+        });
+
+        assert!(pom.contains("<artifactId>Demo</artifactId>"));
+        assert!(pom.contains("<dependencies />") || pom.contains("<dependencies>"));
+    }
+
+    #[test]
+    fn generate_pom_requires_lockfile_for_maven_dependencies() {
+        let temp = TempDir::new("pom-missing-lockfile");
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+
+            [dependencies.maven]
+            library = { url = "https://repo.example", group_id = "com.example", artifact_id = "library", version = "1.2.3" }
+
+            [configuration.main]
+            dependencies = [ "library" ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let error = with_current_dir(temp.path(), || {
+            generate_pom(&project, configuration).unwrap_err()
+        });
+
+        assert!(error.contains("wisteria.lock"));
+        assert!(error.contains("wisteria sync library"));
+        assert!(error.contains("wisteria update library"));
+    }
+
+    #[test]
+    fn generate_pom_rejects_missing_cached_system_path() {
+        let temp = TempDir::new("pom-missing-system-path");
+        let cache_path = ".wisteria/cache/com.example/library/1.2.3/library.jar";
+        let fetch_url = "https://repo.example/com/example/library/1.2.3/library-1.2.3.jar";
+        write_lockfile_artifact(
+            &temp,
+            LockfileArtifact::new(
+                String::from("library"),
+                String::from("maven"),
+                Some(String::from("1.2.3")),
+                String::from(fetch_url),
+                String::from(cache_path),
+                String::from("hash"),
+            ),
+        );
+
+        let project = project_from_toml(
+            &temp,
+            r#"
+            [project]
+            name = "Demo"
+            version = "1.0.0"
+            description = "Demo"
+
+            [dependencies.maven]
+            library = { url = "https://repo.example", group_id = "com.example", artifact_id = "library", version = "1.2.3" }
+
+            [configuration.main]
+            dependencies = [ "library" ]
+            "#,
+        );
+        let configuration = project.info().configurations().get("main").unwrap();
+
+        let error = with_current_dir(temp.path(), || {
+            generate_pom(&project, configuration).unwrap_err()
+        });
+
+        assert!(error.contains(cache_path));
+        assert!(error.contains("wisteria fetch library"));
+    }
+
+    fn write_cached_lockfile_artifact(
+        temp: &TempDir,
+        name: &str,
+        version: &str,
+        fetch_url: &str,
+        cache_path: &str,
+    ) {
+        let full_cache_path = temp.path().join(cache_path);
+        fs::create_dir_all(full_cache_path.parent().unwrap()).unwrap();
+        fs::write(&full_cache_path, "jar").unwrap();
+        let hash = files::generate_sha2_for_file(&full_cache_path).unwrap();
+
+        write_lockfile_artifact(
+            temp,
+            LockfileArtifact::new(
+                String::from(name),
+                String::from("maven"),
+                Some(String::from(version)),
+                String::from(fetch_url),
+                String::from(cache_path),
+                hash,
+            ),
         );
     }
 
-    #[test]
-    fn artifact_version_parses_special_version_selectors() {
-        assert!(matches!(artifact_version(None), ArtifactVersion::Latest));
-        assert!(matches!(
-            artifact_version(Some(&String::from("latest"))),
-            ArtifactVersion::Latest
-        ));
-        assert!(matches!(
-            artifact_version(Some(&String::from("release"))),
-            ArtifactVersion::Release
-        ));
-        match artifact_version(Some(&String::from("1.0.0"))) {
-            ArtifactVersion::Version { version } => assert_eq!(version, "1.0.0"),
-            _ => panic!("expected explicit version"),
-        }
-    }
-
-    #[test]
-    fn recognizes_default_maven_central_with_or_without_trailing_slash() {
-        assert!(is_default_maven_central("https://repo1.maven.org/maven2"));
-        assert!(is_default_maven_central("https://repo1.maven.org/maven2/"));
-        assert!(!is_default_maven_central("https://repo.example.com/maven"));
+    fn write_lockfile_artifact(temp: &TempDir, artifact: LockfileArtifact) {
+        fs::write(
+            temp.path().join(Path::new(consts::LOCKFILE)),
+            lockfile_artifacts_to_toml(vec![artifact]).unwrap(),
+        )
+        .unwrap();
     }
 }
